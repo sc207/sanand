@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Sign in — Shri Vihat Meldi Dham</title>
+<link rel="icon" type="image/png" href="assets/icon.png">
+<link rel="stylesheet" href="css/styles.css">
+<style>
+  html { height: 100%; }
+  body {
+    margin: 0;
+    min-height: 100%;
+    box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    background:
+      radial-gradient(circle at 20% 15%, rgba(201,162,74,.22), transparent 46%),
+      radial-gradient(circle at 84% 88%, rgba(201,106,32,.16), transparent 46%),
+      linear-gradient(160deg, #FBF6EC, #EFE3CF);
+  }
+  .login-box { width: 100%; margin: 0; }
+  .login-form-pane { gap: 0; }
+  #gbtn {
+    display: flex; justify-content: center; min-height: 44px; margin: 6px 0 2px;
+    width: 100%; max-width: 100%; overflow: hidden;
+  }
+  #gbtn > div { margin: 0 auto; }
+  .login-msg {
+    margin-top: 14px; padding: 10px 12px; border-radius: 9px;
+    font-size: 12.5px; display: none; text-align: left;
+  }
+  .login-msg.err { display: block; background: var(--danger-bg); color: var(--danger); border: 1px solid #E6C3BF; }
+  .login-msg.ok  { display: block; background: var(--success-bg); color: var(--success); border: 1px solid #BFD9C4; }
+  .login-hint { font-size: 12px; color: var(--muted-brown); margin: 16px 0 0; line-height: 1.55; }
+
+  /* --- mobile: stop the card being clipped / centred-off-screen --- */
+  @media (max-width: 720px) {
+    body { align-items: flex-start; padding: 16px 14px 28px; }
+    .login-box { max-height: none; }
+  }
+  @media (max-width: 380px) {
+    body { padding: 10px 10px 22px; }
+  }
+</style>
+</head>
+<body>
+  <div class="modal-box login-box">
+    <div class="login-grid">
+
+      <!-- Left: temple identity -->
+      <div class="login-hero">
+        <span class="login-corner c-tl"></span><span class="login-corner c-tr"></span>
+        <span class="login-corner c-bl"></span><span class="login-corner c-br"></span>
+        <img class="login-hero-wm" src="assets/temple.png" alt="" aria-hidden="true" onerror="this.style.display='none'">
+        <div class="login-hero-inner">
+          <div class="login-emblem">
+            <img src="assets/icon.png" alt="Shri Vihat Meldi Dham"
+                 onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('div'),{className:'login-emblem-fb',innerHTML:'🛕'}))">
+          </div>
+          <div class="login-ribbon">॥ જય શ્રી વિહત મેલડી ધામ ॥</div>
+          <h2 class="login-temple">Shri Vihat Meldi Dham</h2>
+          <div class="login-temple-sub">શ્રી વિહત મેલડી ધામ &middot; સાણંદ, ગુજરાત</div>
+          <div class="login-flourish" aria-hidden="true">
+            <svg viewBox="0 0 200 12" preserveAspectRatio="xMidYMid meet">
+              <g fill="none" stroke="#E6C978" stroke-width="1.3">
+                <path d="M6 6H78"/><path d="M122 6H194"/><path d="M90 6q10-8 20 0"/>
+              </g>
+              <circle cx="100" cy="6" r="2.6" fill="#E6C978"/>
+              <circle cx="82" cy="6" r="1.7" fill="#C9A24A"/><circle cx="118" cy="6" r="1.7" fill="#C9A24A"/>
+            </svg>
+          </div>
+          <p class="login-loc">Temple Management &amp; Seva Operations Portal</p>
+
+          <div class="login-diya" aria-hidden="true">
+            <svg viewBox="0 0 120 120">
+              <defs>
+                <radialGradient id="lgDiyaAura" cx="50%" cy="44%" r="52%">
+                  <stop offset="0%" stop-color="#FFE9A8" stop-opacity="0.95"/>
+                  <stop offset="42%" stop-color="#F0A63C" stop-opacity="0.34"/>
+                  <stop offset="100%" stop-color="#F0A63C" stop-opacity="0"/>
+                </radialGradient>
+                <linearGradient id="lgDiyaFlame" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#FFFDF5"/><stop offset="30%" stop-color="#FFE7A0"/>
+                  <stop offset="63%" stop-color="#F6A83B"/><stop offset="100%" stop-color="#CE5E1C"/>
+                </linearGradient>
+                <linearGradient id="lgDiyaCore" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#FFFFFF"/><stop offset="68%" stop-color="#FFEEC2"/>
+                  <stop offset="100%" stop-color="#FFC766"/>
+                </linearGradient>
+                <linearGradient id="lgDiyaBody" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#EDBA5E"/><stop offset="45%" stop-color="#C6892F"/>
+                  <stop offset="100%" stop-color="#6B3B12"/>
+                </linearGradient>
+                <linearGradient id="lgDiyaRim" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#EEC77E"/><stop offset="50%" stop-color="#FBEFC9"/>
+                  <stop offset="100%" stop-color="#DCAB53"/>
+                </linearGradient>
+              </defs>
+              <ellipse class="diya-aura" cx="60" cy="54" rx="48" ry="48" fill="url(#lgDiyaAura)"/>
+              <g class="diya-flame">
+                <path d="M60 18 C48 34 51 48 60 56 C69 48 72 34 60 18 Z" fill="url(#lgDiyaFlame)"/>
+                <path d="M60 30 C54 39 55 48 60 54 C65 48 66 39 60 30 Z" fill="url(#lgDiyaCore)"/>
+              </g>
+              <ellipse cx="60" cy="62" rx="5" ry="2.6" fill="#3F240F"/>
+              <path d="M16 66 Q60 60 104 66 Q106 75 92 84 Q60 98 28 84 Q14 75 16 66 Z" fill="url(#lgDiyaBody)"/>
+              <path d="M16 66 Q60 57 104 66 Q60 74 16 66 Z" fill="url(#lgDiyaRim)"/>
+              <path d="M16 66 Q5 65 1 71 Q9 73 18 70 Z" fill="url(#lgDiyaBody)"/>
+              <path d="M49 92 Q60 99 71 92 Q67 101 60 101 Q53 101 49 92 Z" fill="#7A4417"/>
+            </svg>
+          </div>
+        </div>
+        <div class="login-hero-foot">માતાજીની કૃપા, ભક્તોની શ્રદ્ધા &nbsp;·&nbsp; ખમ્મા માડી 🙏</div>
+      </div>
+
+      <!-- Right: Google sign-in -->
+      <div class="login-form-pane">
+        <div class="login-form-head">
+          <img class="login-form-mark" src="assets/icon.png" alt="" aria-hidden="true" onerror="this.style.display='none'">
+          <div>
+            <h3 class="login-form-title">Sign In to Portal</h3>
+            <p class="login-form-sub">Authorised temple staff only</p>
+          </div>
+        </div>
+
+        <div id="gbtn"></div>
+        <div id="loginMsg" class="login-msg"></div>
+
+        <p class="login-hint">
+          Sign in with the Google account an administrator has registered for you.
+          If you are signed into several Google accounts, the button lets you
+          pick which one. There is no self&#8209;registration and no password.
+        </p>
+        <p class="login-legal">Shri Vihat Meldi Dham &middot; Sanand, Gujarat</p>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+  /* ---- ONE controlled Google Identity Services flow for this page ----
+     - a single google.accounts.id.initialize() (guarded, never repeated)
+     - the RENDERED button only (no One Tap prompt), auto_select:false, so a
+       browser signed into several Google accounts always gets the chooser
+     - no login_hint / hd / fixed email — the user picks the account
+     - a watchdog so a failed FedCM/token exchange never leaves the user stuck;
+       it returns them to a usable /login with a clear message
+     Google authentication (who owns this Google account) is separate from
+     application authorization (is that email registered temple staff) — the
+     latter is decided by the backend at POST /api/auth/google.
+
+     iOS is a separate branch (see isIOS() below): Safari's popup/FedCM/
+     third-party-cookie restrictions make the normal popup account-chooser
+     unreliable there — the chooser can open but never call back into the
+     page after an account is picked. iOS therefore initializes GIS with
+     ux_mode:'redirect' (a real top-level navigation to Google and back,
+     landing on POST /api/auth/google/redirect) instead. Windows/Android/
+     desktop keep the exact popup+FedCM config below, unchanged. */
+  (function () {
+    var msg = document.getElementById('loginMsg');
+    var box = document.getElementById('gbtn');
+    var initialized = false;
+    var watchdog = null;
+
+    /* iPhone/iPod always identify themselves in the UA; iPadOS 13+ instead
+       reports as desktop Safari ("MacIntel") but is still touch-only, so a
+       real Mac is distinguished by having at most one touch point (0). */
+    function isIOS() {
+      return /iP(hone|od|ad)/.test(navigator.userAgent) ||
+             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    function show(kind, text) { msg.className = 'login-msg ' + kind; msg.textContent = text; }
+    function clearWatchdog() { if (watchdog) { clearTimeout(watchdog); watchdog = null; } }
+
+    /* A previous POST /api/auth/google/redirect attempt (iOS) landed back
+       here with a failure code instead of completing — show it once, then
+       drop it from the URL so a later reload/retry starts clean. */
+    (function showRedirectErrorIfAny() {
+      var params = new URLSearchParams(location.search);
+      var code = params.get('error');
+      if (!code) return;
+      var TEXT = {
+        csrf: 'Sign-in could not be verified — please try again.',
+        no_credential: 'Google sign-in did not complete — please try again.',
+        not_authorized: 'This Google account is not authorised for the temple portal.',
+        google_failed: 'Google sign-in failed — please try again.',
+        server_error: 'Something went wrong on our end — please try again.'
+      };
+      show('err', TEXT[code] || 'Sign-in did not complete — please try again.');
+      params.delete('error');
+      var qs = params.toString();
+      history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+    })();
+
+    function armWatchdog() {
+      clearWatchdog();
+      show('ok', 'Opening the Google account chooser…');
+      watchdog = setTimeout(function () {
+        watchdog = null;
+        show('err',
+          'Google sign-in did not complete. If the account chooser opened but hung: click the icon on the left of the address bar → allow third-party sign-in for this site, or try an Incognito window, then reload. ' +
+          'If it keeps failing for everyone, the portal’s Google sign-in origin needs to be added in Google Cloud Console.');
+      }, 30000);
+    }
+
+    function onGoogle(resp) {
+      clearWatchdog();
+      if (!resp || !resp.credential) { show('err', 'Google sign-in could not be completed. Please try again.'); return; }
+      show('ok', 'Signing you in…');
+      fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ credential: resp.credential })
+      })
+        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
+        .then(function (res) {
+          if (res.ok) { window.location.href = '/'; return; }
+          // application authorization failure (not a Google failure)
+          show('err', (res.b && res.b.error) || 'This Google account is not authorised for the temple portal.');
+        })
+        .catch(function () { show('err', 'Network error — please try again.'); });
+    }
+
+    function init(clientId) {
+      if (initialized) return;
+      if (!clientId) { show('err', 'Google sign-in is not configured on the server (GOOGLE_CLIENT_ID missing).'); return; }
+
+      var tries = 0;
+      (function ready() {
+        if (!window.google || !google.accounts || !google.accounts.id) {
+          if (++tries > 80) { show('err', 'Could not load Google Sign-In. Check your connection or an ad-blocker, then reload.'); return; }
+          setTimeout(ready, 120); return;
+        }
+
+        var iosMode = isIOS();
+        var initConfig = {
+          client_id: clientId,
+          callback: onGoogle,
+          auto_select: false,          // never auto-pick when multiple accounts exist
+          itp_support: true            // Safari / ITP support (not a FedCM toggle)
+        };
+        if (iosMode) {
+          // Full top-level navigation instead of the popup/FedCM chooser —
+          // see the file-header comment. `callback` above is ignored by GIS
+          // in this mode (there is no in-page callback); the credential
+          // arrives server-side instead, at login_uri.
+          initConfig.ux_mode = 'redirect';
+          initConfig.login_uri = window.location.origin + '/api/auth/google/redirect';
+        }
+        google.accounts.id.initialize(initConfig);
+        initialized = true;
+        window.__gisInitialized = true;
+
+        /* size the rendered button to the pane, not a fixed 300px — otherwise
+           it overflows / clips on a narrow phone. GIS caps width at 400. */
+        var btnW = Math.max(220, Math.min(360, Math.round(box.clientWidth) || 300));
+
+        google.accounts.id.renderButton(box, {
+          type: 'standard', theme: 'filled_blue', size: 'large',
+          text: 'signin_with', shape: 'pill', width: btnW,
+          click_listener: armWatchdog,     // start the "not stuck" timer on click
+          // Prefer the legacy popup account-chooser over FedCM where Chrome still
+          // allows the choice: the popup completes reliably with several accounts
+          // signed in and never hangs on accounts.google.com/gsi/transform. On
+          // the newest Chrome (FedCM-only) this is ignored and the browser's
+          // native chooser is used — the JS-origin allow-list must be correct
+          // for that path.
+          use_fedcm_for_button: false
+        });
+
+        /* One Tap prompt — the "Continue as …" auto-detect for a returning user.
+           auto_select stays false (no silent pick among several accounts). If it
+           can't show (multiple accounts / dismissed / cooldown) the notification
+           callback just steps aside — the button below still works, no error.
+           Skipped entirely on iOS: it's a popup/iframe surface with an in-page
+           callback, the exact thing ux_mode:'redirect' exists to avoid there —
+           the rendered button (which honors ux_mode) remains the iOS path. */
+        if (!iosMode) {
+          try {
+            google.accounts.id.prompt(function (n) {
+              if (n && (n.isNotDisplayed && n.isNotDisplayed() || n.isSkippedMoment && n.isSkippedMoment())) {
+                /* silently fall back to the rendered button — do nothing */
+              }
+            });
+          } catch (e) { /* button remains the path */ }
+        }
+
+        /* dev-only diagnostics — safe values only, never tokens/cookies */
+        if (/^(localhost|127\.|\[::1\])/.test(location.hostname)) {
+          console.info('[login] origin           :', window.location.origin);
+          console.info('[login] ux_mode          :', iosMode ? 'redirect (iOS)' : 'popup');
+          console.info('[login] google client id :', clientId);
+          console.info('[login] gis initialized  :', window.__gisInitialized === true);
+        }
+      })();
+    }
+
+    fetch('/api/auth/config', { credentials: 'include' })
+      .then(function (r) { return r.json(); })
+      .then(function (c) { init(c && c.googleClientId); })
+      .catch(function () { show('err', 'Could not reach the server. Reload and try again.'); });
+  })();
+  </script>
+</body>
+</html>

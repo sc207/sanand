@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#6B1F2A">
+<title>Shri Vihat Meldi Dham — Sanand</title>
+<link rel="icon" type="image/png" href="/assets/icon.png">
+<link rel="stylesheet" href="/css/styles.css">
+<link rel="stylesheet" href="/css/app-extras.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ==========================================
+       DIVINE MANDALA SIDEBAR NAVIGATION
+       ========================================== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <img src="/assets/icon.png" class="temple-emblem-img" alt="Shri Vihat Meldi Dham"
+           onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('div'),{className:'temple-emblem-fallback'}))">
+      <div class="sidebar-brand-text">
+        <div class="sidebar-logo-title" id="brandName">શ્રી વિહત મેલડી ધામ</div>
+        <div class="sidebar-logo-subtitle" id="brandSub">Sanand, Gujarat</div>
+      </div>
+    </div>
+
+    <div class="sidebar-nav">
+      <div class="nav-group-title" data-i18n="Overview">Overview</div>
+      <div class="nav-item" data-page="dashboard">
+        <svg class="ico"><use href="/assets/icons.svg#home"/></svg><span data-i18n="Dashboard">Dashboard</span>
+      </div>
+      <div class="nav-item" data-page="calendar">
+        <svg class="ico"><use href="/assets/icons.svg#calendar"/></svg><span data-i18n="Universal Calendar">Universal Calendar</span>
+      </div>
+
+      <div class="nav-group-title" data-i18n="Mahotsav">Mahotsav</div>
+      <div class="nav-item nav-item-featured" data-page="mahotsav">
+        <svg class="ico"><use href="/assets/icons.svg#temple"/></svg><span data-i18n="Pran Pratishtha">Pran Pratishtha</span>
+      </div>
+      <div class="nav-item" data-page="payments">
+        <svg class="ico"><use href="/assets/icons.svg#rupee"/></svg><span data-i18n="Payment Received">Payment Received</span>
+      </div>
+      <div class="nav-item" data-page="invitation">
+        <svg class="ico"><use href="/assets/icons.svg#mail"/></svg><span data-i18n="Invitation">Invitation</span>
+      </div>
+
+      <div class="nav-group-title" data-i18n="Devotees &amp; Seva">Devotees &amp; Seva</div>
+      <div class="nav-item" data-page="devotees">
+        <svg class="ico"><use href="/assets/icons.svg#users"/></svg><span data-i18n="Devotee Register">Devotee Register</span>
+      </div>
+      <div class="nav-item" data-page="visits">
+        <svg class="ico"><use href="/assets/icons.svg#diya"/></svg><span data-i18n="Padhramni">Padhramni</span>
+      </div>
+      <div class="nav-item" data-page="donations">
+        <svg class="ico"><use href="/assets/icons.svg#gift"/></svg><span data-i18n="Donation">Donation</span>
+      </div>
+
+      <div class="nav-group-title" data-i18n="Administration">Administration</div>
+      <div class="nav-item" data-page="settings">
+        <svg class="ico"><use href="/assets/icons.svg#settings"/></svg><span data-i18n="Settings">Settings</span>
+      </div>
+      <div class="nav-item" data-page="accounts">
+        <svg class="ico"><use href="/assets/icons.svg#shield"/></svg><span data-i18n="Accounts &amp; Access">Accounts &amp; Access</span>
+      </div>
+    </div>
+
+    <!-- Sacred Diya (Deepak) Footer -->
+    <div class="sidebar-footer">
+      <div class="sacred-diya" aria-hidden="true">
+        <svg viewBox="0 0 120 120">
+          <defs>
+            <radialGradient id="diyaAura" cx="50%" cy="44%" r="52%">
+              <stop offset="0%" stop-color="#FFE9A8" stop-opacity="0.95"/>
+              <stop offset="42%" stop-color="#F0A63C" stop-opacity="0.34"/>
+              <stop offset="100%" stop-color="#F0A63C" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="diyaFlame" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#FFFDF5"/><stop offset="30%" stop-color="#FFE7A0"/>
+              <stop offset="63%" stop-color="#F6A83B"/><stop offset="100%" stop-color="#CE5E1C"/>
+            </linearGradient>
+            <linearGradient id="diyaFlameCore" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#FFFFFF"/><stop offset="68%" stop-color="#FFEEC2"/>
+              <stop offset="100%" stop-color="#FFC766"/>
+            </linearGradient>
+            <linearGradient id="diyaBody" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#EDBA5E"/><stop offset="45%" stop-color="#C6892F"/>
+              <stop offset="100%" stop-color="#6B3B12"/>
+            </linearGradient>
+            <linearGradient id="diyaRim" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#EEC77E"/><stop offset="50%" stop-color="#FBEFC9"/>
+              <stop offset="100%" stop-color="#DCAB53"/>
+            </linearGradient>
+          </defs>
+          <ellipse class="diya-aura" cx="60" cy="54" rx="48" ry="48" fill="url(#diyaAura)"/>
+          <g class="diya-flame">
+            <path d="M60 18 C48 34 51 48 60 56 C69 48 72 34 60 18 Z" fill="url(#diyaFlame)"/>
+            <path d="M60 30 C54 39 55 48 60 54 C65 48 66 39 60 30 Z" fill="url(#diyaFlameCore)"/>
+          </g>
+          <ellipse cx="60" cy="62" rx="5" ry="2.6" fill="#3F240F"/>
+          <path d="M16 66 Q60 60 104 66 Q106 75 92 84 Q60 98 28 84 Q14 75 16 66 Z" fill="url(#diyaBody)"/>
+          <path d="M16 66 Q60 57 104 66 Q60 74 16 66 Z" fill="url(#diyaRim)"/>
+          <path d="M16 66 Q5 65 1 71 Q9 73 18 70 Z" fill="url(#diyaBody)"/>
+          <path d="M49 92 Q60 99 71 92 Q67 101 60 101 Q53 101 49 92 Z" fill="#7A4417"/>
+        </svg>
+      </div>
+      <div class="sidebar-footer-blessing">જય શ્રી વિહત મેલડી ધામ</div>
+    </div>
+  </aside>
+
+  <!-- ==========================================
+       MAIN CONTENT CONTAINER
+       ========================================== -->
+  <main class="main-container">
+
+    <header class="top-navbar">
+      <div class="nav-left">
+        <button class="sidebar-toggle-btn" id="toggleSidebar" aria-label="Toggle sidebar">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+
+        <div class="header-logo-title">
+          <img src="/assets/icon.png" class="header-emblem-img" alt="" aria-hidden="true" onerror="this.style.display='none'">
+          <span>શ્રી વિહત મેલડી ધામ</span>
+        </div>
+
+        <div class="nav-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="globalSearchInput" autocomplete="off" placeholder="Search devotee, sevarthi, pooja…">
+        </div>
+      </div>
+
+      <div class="nav-right">
+        <div class="lang-select-wrapper">
+          <button class="lang-toggle" id="langToggle" aria-label="Switch language">
+            <span data-lang-en>EN</span><span data-lang-gu>ગુ</span>
+          </button>
+        </div>
+
+        <div class="user-profile-menu" id="userChip" title="Signed in as">
+          <span class="mg-avatar" id="userInitial">A</span>
+          <span class="user-name" id="topbarUserName">Administrator</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+      </div>
+    </header>
+
+    <div class="content-wrapper">
+      <section class="page active" id="main"></section>
+    </div>
+  </main>
+</div>
+
+<!-- ==========================================
+     MOBILE BOTTOM NAVIGATION BAR
+     ========================================== -->
+<nav class="mobile-bottom-nav">
+  <div class="mobile-nav-item" data-page="dashboard">
+    <svg class="ico"><use href="/assets/icons.svg#home"/></svg><span data-i18n="Home">Home</span>
+  </div>
+  <div class="mobile-nav-item" data-page="mahotsav">
+    <svg class="ico"><use href="/assets/icons.svg#temple"/></svg><span data-i18n="Mahotsav">Mahotsav</span>
+  </div>
+  <div class="mobile-nav-item mob-fab" data-action="quick-add" aria-label="Quick add">
+    <svg class="ico"><use href="/assets/icons.svg#plus"/></svg>
+  </div>
+  <div class="mobile-nav-item" data-page="payments">
+    <svg class="ico"><use href="/assets/icons.svg#rupee"/></svg><span data-i18n="Payments">Payments</span>
+  </div>
+  <div class="mobile-nav-item" data-action="more">
+    <svg class="ico"><use href="/assets/icons.svg#menu"/></svg><span data-i18n="More">More</span>
+  </div>
+</nav>
+
+<!-- ==========================================
+     SHARED MODAL  (sk's .modal-overlay pattern)
+     ========================================== -->
+<div class="modal-overlay" id="sheet" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="sheetTitle">Title</div>
+      <button class="modal-close-btn" id="sheetClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body" id="sheetBody"></div>
+    <div class="modal-footer" id="sheetFoot"></div>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script src="/js/lang.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/print.js"></script>
+<script src="/js/pages/dashboard.js"></script>
+<script src="/js/pages/mahotsav.js"></script>
+<script src="/js/pages/payments.js"></script>
+<script src="/js/pages/devotees.js"></script>
+<script src="/js/pages/visits.js"></script>
+<script src="/js/pages/calendar.js"></script>
+<script src="/js/pages/donations.js"></script>
+<script src="/js/pages/invitation.js"></script>
+<script src="/js/pages/settings.js"></script>
+<script src="/js/pages/accounts.js"></script>
+<script src="/js/forms.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
