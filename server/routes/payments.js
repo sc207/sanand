@@ -81,7 +81,11 @@ router.get('/outstanding', (req, res) => {
            d.id AS devotee_id, d.full_name, d.mobile, d.city,
            s.value AS samaj, c.value AS devotee_category,
            pe.name AS pooja_name, pe.category, ps.slot_date,
-           (SELECT IFNULL(SUM(amount),0) FROM payments WHERE booking_id = b.id) AS amount_paid
+           (SELECT IFNULL(SUM(amount),0) FROM payments WHERE booking_id = b.id) AS amount_paid,
+           (SELECT IFNULL(SUM(amount),0) FROM payments
+             WHERE booking_id = b.id AND payer_type = 'bhuvaji')  AS bappa_paid,
+           (SELECT IFNULL(SUM(amount),0) FROM payments
+             WHERE booking_id = b.id AND payer_type <> 'bhuvaji') AS devotee_paid
       FROM sevarthi_bookings b
       JOIN pooja_slots  ps ON ps.id = b.slot_id
       JOIN pooja_events pe ON pe.id = ps.pooja_id
@@ -125,6 +129,45 @@ router.post('/', (req, res) => {
     details: { amount, payer_type: row.payer_type, booking_id: booking.id },
   });
   res.status(201).json({ payment: row, booking_status: updated.status });
+});
+
+/** Correct a payment entry. The ledger is append-only in spirit — the
+    booking's total is always the sum of its rows and is never hand-set
+    — but an operator who typed 1000 for 10000, or picked yesterday by
+    mistake, has to be able to fix it. Every change is audited with the
+    before/after, and the booking status is recomputed from the ledger
+    afterwards exactly as it is for a new payment. */
+router.put('/:id', (req, res) => {
+  const p = db.prepare(`SELECT * FROM payments WHERE id = ?`).get(req.params.id);
+  if (!p) return res.status(404).json({ error: 'Payment not found' });
+  const b = req.body;
+
+  const amount = Number(b.amount ?? p.amount);
+  if (!(amount > 0)) return res.status(400).json({ error: 'Enter an amount greater than zero' });
+
+  db.prepare(`
+    UPDATE payments SET amount=@amount, payer_type=@payer_type, payment_date=@payment_date,
+           receipt_no=@receipt_no, notes=@notes
+     WHERE id=@id
+  `).run({
+    id: p.id,
+    amount,
+    payer_type: (b.payer_type ?? p.payer_type) === 'bhuvaji' ? 'bhuvaji' : 'devotee',
+    payment_date: b.payment_date || p.payment_date,
+    receipt_no: ((b.receipt_no ?? p.receipt_no) || '').trim() || null,
+    notes: ((b.notes ?? p.notes) || '').trim() || null,
+  });
+
+  const updated = refreshStatus(p.booking_id);
+  const row = db.prepare(PAYMENT_SELECT + ` WHERE p.id = ?`).get(p.id);
+  log(req, {
+    action: 'update', entity: 'payment', entityId: p.id,
+    summary: `Corrected payment for ${row.full_name}` +
+             (p.amount !== amount ? ` (₹${p.amount} → ₹${amount})` : '') +
+             ` [${updated ? updated.status : 'cancelled'}]`,
+    details: { before: p, after: row },
+  });
+  res.json({ payment: row, booking_status: updated ? updated.status : null });
 });
 
 router.delete('/:id', (req, res) => {

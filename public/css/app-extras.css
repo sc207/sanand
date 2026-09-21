@@ -234,3 +234,691 @@ html.lang-gu .lang-toggle [data-lang-gu] { background: var(--primary-maroon); co
   .stats-grid { grid-template-columns: repeat(2, 1fr); gap: .7rem; }
   .content-wrapper { padding: 1rem .85rem; }
 }
+
+/* ============================================================
+   THE SHEET IS A NATIVE <dialog>
+   ------------------------------------------------------------
+   styles.css styles #sheet as a full-viewport .modal-overlay, which
+   predates it being a real dialog. The UA gives every dialog its own
+   box (centred margins, a border, a white background and a max-size
+   that would shrink the overlay), so those are reset here and the
+   original look is kept exactly. The dim comes from .modal-overlay's
+   own background, so ::backdrop stays transparent rather than
+   doubling it.
+   ============================================================ */
+dialog#sheet {
+  max-width: none;
+  max-height: none;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  margin: 0;
+  overflow: hidden;                 /* .modal-box does the scrolling */
+  color: inherit;
+}
+dialog#sheet:not([open]) { display: none; }
+dialog#sheet[open] { display: flex; }
+dialog#sheet::backdrop { background: transparent; }
+
+/* The action buttons stay reachable on a long form — Add Sevarthi runs
+   well past a phone screen, and hunting for Save at the bottom of a
+   scroll was the slowest part of entering someone. */
+#sheet .modal-box { display: flex; flex-direction: column; }
+#sheet .modal-header { position: sticky; top: 0; z-index: 2; background: #FFFFFF; }
+#sheet .modal-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: #FFFFFF;
+  border-top: 1px solid var(--warm-border);
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+#sheet .modal-footer:empty { display: none; }
+
+/* ============================================================
+   VALIDATION — after the operator has finished, never while typing
+   ------------------------------------------------------------
+   :user-invalid only matches once a field has been left (or a submit
+   attempted), so a half-typed mobile number is not scolded mid-entry.
+   Only the error state is painted: a green ring on every correct field
+   would turn a long form into a christmas tree. The colour is backed
+   by a message from showFieldError(), so this is never colour alone.
+   ============================================================ */
+.form-input:user-invalid,
+.form-select:user-invalid,
+.form-textarea:user-invalid {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+.form-group:has(.form-input:user-invalid) .form-label { color: var(--danger); }
+
+/* ============================================================
+   EDIT AFFORDANCES
+   ------------------------------------------------------------
+   Everything the trust can change should look changeable. Row actions
+   sit together at the end of a row, and stay visible on touch — a
+   hover-only reveal hides the edit button on exactly the tablets the
+   mandir uses.
+   ============================================================ */
+.row-actions { display: flex; align-items: center; gap: .15rem; justify-content: flex-end; }
+.row-actions .icon-btn { padding: .4rem; border-radius: var(--radius-sm); }
+.row-actions .icon-btn:hover { background: var(--warm-ivory); color: var(--primary-maroon) !important; }
+
+.card-head-actions { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; justify-content: flex-end; }
+
+/* Rename-in-place inside the managed lists. */
+.lk-rename {
+  border: 1px solid transparent;
+  background: transparent;
+  padding: .3rem .45rem;
+  font-weight: 600;
+  color: var(--dark-brown);
+  border-radius: var(--radius-sm);
+  width: 100%;
+}
+.lk-rename:hover { border-color: var(--warm-border); background: var(--off-white); }
+.lk-rename:focus { border-color: var(--antique-gold); background: #fff; outline: none; }
+
+/* A destructive action that is available but never the loud one. */
+.mg-danger-ghost { color: var(--danger); border-color: var(--danger); }
+.mg-danger-ghost:hover { background: var(--danger-bg); }
+
+/* ============================================================
+   POLISH
+   ============================================================ */
+/* A visible ring for keyboard users, on the app's own gold. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--antique-gold);
+  outline-offset: 2px;
+}
+/* Money and counts line up column-wise when they share a digit width. */
+.row-amount, .stat-card-value, .ledger-bd-row, .slot-count { font-variant-numeric: tabular-nums; }
+
+/* Comfortable touch targets on tablet and phone, where the mandir
+   actually enters people. */
+@media (pointer: coarse) {
+  .icon-btn { min-width: 40px; min-height: 40px; }
+  .row-item { padding-block: .9rem; }
+}
+
+@media (max-width: 640px) {
+  /* Stack the row's value and its buttons instead of squeezing them. */
+  .row-item { flex-wrap: wrap; }
+  .row-end { display: flex; align-items: center; gap: .6rem; margin-left: auto; }
+  .ledger-item { flex-wrap: wrap; }
+  .ledger-breakdown { min-width: 0; flex: 1; }
+  .slot-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: .5rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cat-card:hover, .stat:hover { transform: none; }
+  .modal-overlay { animation: none; }
+}
+
+/* ============================================================
+   PORTED FROM THE DEAD app.css
+   ------------------------------------------------------------
+   These classes are rendered by pages/*.js but were only ever
+   defined in public/css/app.css, which is not linked — so in the
+   running app they had no styling at all. Same failure as the
+   .stat/.stat-ico case already noted in CLAUDE.md. Definitions are
+   brought over and retokenised onto styles.css's palette (app.css
+   used its own --maroon/--gold/--font-display, which do not exist
+   here).
+   ============================================================ */
+
+/* Destructive confirms. UI.confirmSheet() puts this on every "yes,
+   delete" button, so without it the most dangerous button in the app
+   looked identical to a neutral one. */
+.btn-danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #FFFFFF;
+}
+.btn-danger:hover { background: #9E3E37; border-color: #9E3E37; color: #FFFFFF; }
+
+/* Two fields side by side — used for the start/end date pair in the
+   pooja form, which was stacking instead. */
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: .85rem; }
+@media (max-width: 480px) { .field-row { grid-template-columns: 1fr; gap: 0; } }
+
+/* Month stepper on Payment Received and Donation. Centred rather than
+   spread: the card runs the full width of the page, and space-between
+   flung the two chevrons to opposite edges. */
+.cal-head { display: flex; align-items: center; justify-content: center; gap: .9rem; }
+.cal-month {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  color: var(--primary-maroon);
+  font-size: 1rem;
+  min-width: 12ch;
+  text-align: center;
+}
+
+/* Round icon badge used in the quick-add menu. */
+.badge-ico {
+  width: 40px; height: 40px; border-radius: 50%; flex: none;
+  display: grid; place-items: center;
+  background: var(--gold-bg);
+  color: var(--antique-gold);
+}
+
+/* The avatar disc on a user row in Accounts & Access. */
+.user-chip {
+  width: 34px; height: 34px; border-radius: 50%; border: 0; flex: none;
+  display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--gold-light), var(--saffron));
+  color: var(--primary-maroon-dark);
+  font-weight: 800; font-size: .85rem;
+}
+
+/* Skeleton stack shown while a page loads. */
+.loading { display: grid; gap: .6rem; }
+
+/* ============================================================
+   BREATHING ROOM
+   ------------------------------------------------------------
+   The portal's spacing was tuned for a lighter page than this app
+   renders: these screens stack a page head, a figure strip, a filter
+   row, a search box and a long list, and at the original rhythm they
+   ran together into one dense block. Every value here is a step up
+   from the one it overrides, not a new scale — the proportions are
+   the portal's, with more air between the parts.
+   ============================================================ */
+.content-wrapper { padding: 2.25rem 2rem; }
+.card + .card { margin-top: 1.9rem; }
+.mg-page-head { margin-bottom: 1.9rem; gap: 1rem; }
+.mg-page-sub { margin-top: .4rem; }
+
+/* A section heading needs distance from what precedes it, or it reads
+   as part of the block above rather than a label for the one below. */
+.section-title { margin-top: 2rem; margin-bottom: .9rem; }
+.section-title:first-child { margin-top: 0; }
+
+.card-header { padding: 1.25rem 1.5rem; }
+.card-body { padding: 1.4rem 1.5rem; }
+.card-body[style*="padding:0"] { padding: 0; }   /* list cards opt out inline */
+
+.row-item { padding: 1rem 1.5rem; }
+.ledger-item { padding: 1.05rem 1.5rem; }
+.stats-grid > * { padding: 1.35rem 1.5rem; }
+.search-bar { margin-bottom: 1.25rem; }
+.sort-row, .filter-row { margin-bottom: 1.25rem; gap: .6rem; }
+
+/* Inside the sheet the same rhythm, a touch tighter — a dialog is a
+   smaller room. */
+#sheet .modal-body { padding: 1.4rem 1.5rem; }
+#sheet .row-item { padding: .85rem 1rem; }
+.form-group { margin-bottom: 1.05rem; }
+
+@media (max-width: 640px) {
+  .content-wrapper { padding: 1.25rem 1rem; }
+  .card-header, .card-body { padding: 1.1rem 1.15rem; }
+  .row-item, .ledger-item { padding: .95rem 1.15rem; }
+  .stats-grid > * { padding: 1.1rem 1.15rem; }
+}
+
+/* ---------- Breadcrumb bar with an explicit way back ----------------- */
+.crumb-bar {
+  display: flex; align-items: center; gap: .85rem; flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.crumb-back { flex-shrink: 0; }
+.crumb-bar .crumbs { margin-bottom: 0; }
+
+/* ---------- Filter row (register-style pages) ------------------------ */
+.filter-row {
+  display: flex; flex-wrap: wrap; gap: .5rem;
+  margin-bottom: 1rem;
+}
+.filter-row .form-select {
+  width: auto; min-width: 150px; flex: 0 1 auto;
+  padding: .45rem .7rem; font-size: .82rem;
+  background: var(--ivory-card);
+}
+@media (max-width: 560px) { .filter-row .form-select { flex: 1 1 100%; } }
+
+/* A devotee row carries the same three bands as a collections row. */
+.devotee-row { align-items: flex-start; gap: 1rem; }
+.devotee-row .row-main { display: flex; flex-direction: column; gap: .4rem; }
+.collect-meta .is-missing { color: var(--warning); display: inline-flex; align-items: center; gap: .25rem; }
+.collect-meta .is-missing .ico { width: 13px; height: 13px; }
+
+/* ---------- Pager ---------------------------------------------------- */
+.pager {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .75rem; flex-wrap: wrap;
+  padding: .75rem 1.1rem;
+  border-top: 1px solid var(--warm-border);
+}
+.pager-count { font-size: .8rem; color: var(--muted-brown); font-variant-numeric: tabular-nums; }
+.pager .btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* ---------- Collections row (Payments) -------------------------------
+   Three bands under the name — who and which seva, the figures, and
+   when it happened — so the row can be read top to bottom instead of
+   parsed out of one long line. */
+.collect-row { align-items: flex-start; gap: 1rem; }
+.collect-row .row-main { display: flex; flex-direction: column; gap: .4rem; }
+
+/* Meta wraps rather than truncating: .row-sub's ellipsis was cutting
+   off the mobile number and samaj, which are what an operator rings. */
+.collect-meta {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: .15rem .55rem;
+  font-size: .79rem; color: var(--muted-brown);
+}
+.collect-meta > span + span::before { content: '·'; margin-right: .55rem; color: var(--warm-border); }
+
+/* Labelled cells, so figures line up in columns down the list. */
+.fig-band {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, max-content));
+  gap: .35rem 1.4rem;
+  padding: .5rem .7rem;
+  background: var(--warm-ivory);
+  border-radius: var(--radius-sm);
+}
+.fig-band .fig { display: flex; flex-direction: column; line-height: 1.25; }
+.fig-k { font-size: .68rem; letter-spacing: .3px; text-transform: uppercase; color: var(--muted-brown); }
+.fig-v { font-size: .9rem; font-weight: 700; color: var(--dark-brown); font-variant-numeric: tabular-nums; }
+.fig.is-due .fig-v { color: var(--warning); }
+.fig.is-extra .fig-v { color: var(--saffron); }
+.fig.is-bapa .fig-v { color: var(--primary-maroon); }
+.fig.is-ok .fig-v { color: var(--success); }
+
+/* When it happened — the dates the seva date does not answer. */
+.collect-when {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .55rem;
+  font-size: .75rem; color: var(--muted-brown);
+}
+.collect-when .ico { width: 13px; height: 13px; color: var(--antique-gold); }
+.collect-when > span + span::before { content: '·'; margin-right: .55rem; color: var(--warm-border); }
+
+.collect-actions { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 720px) {
+  .collect-actions { width: 100%; justify-content: flex-start; margin-top: .5rem; }
+  .fig-band { width: 100%; }
+}
+
+/* Inside the sheet a row is only ~520px wide, so .row-sub's ellipsis
+   ate the end of pooja names and dates in the Add Payment picker.
+   Two short lines beat one cut-off one in a dialog too. */
+#sheet .row-sub { white-space: normal; overflow: visible; }
+
+/* A 35-item picker should scroll in place rather than make the page
+   itself 35 rows long. Paging a selection list would be worse: the
+   operator would have to hunt across pages to tick two poojas. */
+#civChecklist {
+  max-height: 58vh;
+  overflow-y: auto;
+  border: 1px solid var(--warm-border);
+  border-radius: var(--radius-sm);
+}
+
+/* The invitation checklist is a 320px column, and .row-sub truncates
+   with an ellipsis — which hid the very thing the operator picks a
+   pooja by ("Bhagvat Saptah — Katha · Date t…"). Two short lines beat
+   one cut-off one here. */
+.civ-layout .row-sub { white-space: normal; overflow: visible; }
+.civ-layout .row-item { align-items: flex-start; }
+
+/* A page-level form sits in a card the full width of the content
+   column, so its fields pair into .form-row columns rather than
+   stretching one per line — capping each field instead just left the
+   card half empty. Its buttons sit on their own row at natural width;
+   a full-width Save across 1300px looked like an error state. */
+.form-actions {
+  display: flex; gap: .6rem; flex-wrap: wrap;
+  margin-top: .4rem;
+}
+.form-actions .btn { min-width: 160px; }
+
+/* styles.css sized .mg-empty-mandala for an emoji glyph, which the
+   parent's text-align centred for free. This app renders an SVG icon
+   there instead and .ico is display:block, so every empty state had
+   its mark stranded at the left edge. */
+.mg-empty-mandala { display: flex; justify-content: center; }
+.mg-empty-mandala .ico { width: 40px; height: 40px; color: var(--antique-gold); }
+
+/* ============================================================
+   STRUCTURE AND FIXES THAT ARE NOT PART OF ANY THEME
+   ------------------------------------------------------------
+   There was briefly a theme.css override layer that restyled the
+   portal's type and shapes. The trust chose the original svmds look,
+   so it was removed — but not these: markup in pages/*.js needs them
+   (breadcrumbs, the seva card grid, the ledger row, the sort control)
+   and the rest are outright fixes (the missing badge variants, the
+   content width cap). None of it is cosmetic, so it stays.
+   ============================================================ */
+/* ---------- Card grids ----------------------------------------------
+   Seva and category cards sit side by side instead of one per row —
+   a category with ten yagna tiers was a very long scroll. */
+.seva-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 1rem;
+}
+.seva-grid > .card,
+.seva-grid > .card + .card { margin: 0; }
+/* Cards in a row match height, and the progress bar sits on the
+   baseline of each — a ragged row of cards reads as broken. */
+.seva-grid .cat-card { height: 100%; }
+.seva-grid .cat-card .card-body {
+  padding: 1.15rem 1.25rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.seva-grid .cat-card .progress { margin-top: auto; }
+.seva-grid .cat-card .seva-card-state { margin-bottom: .6rem; }
+@media (max-width: 520px) {
+  .seva-grid { grid-template-columns: 1fr; }
+}
+
+/* A seva card's title line: name, then the chevron pinned right. */
+.seva-head { display: flex; align-items: flex-start; justify-content: space-between; gap: .6rem; }
+.seva-head .item-name { font-size: 1.02rem; font-weight: 700; color: var(--dark-brown); }
+.seva-card-meta { font-size: .82rem; color: var(--muted-brown); margin-top: .3rem; }
+.seva-card-state { font-size: .84rem; color: var(--dark-brown); margin: .75rem 0 .5rem; }
+.seva-card-state.is-full { color: var(--danger); font-weight: 600; }
+
+/* ---------- Breadcrumbs ---------------------------------------------
+   Three levels deep (Mahotsav → category → pooja) needs a trail, not
+   just a back button — the operator should see where they are. */
+.crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .35rem;
+  font-size: .84rem;
+  color: var(--muted-brown);
+  margin-bottom: .5rem;
+}
+.crumbs button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--muted-brown);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.crumbs button:hover { color: var(--primary-maroon); text-decoration: underline; }
+.crumbs .crumb-sep { color: var(--warm-border); }
+.crumbs .crumb-current { color: var(--dark-brown); font-weight: 600; }
+
+/* ---------- Sevarthi ledger -----------------------------------------
+   An avatar, the name with its state beside it, and the money on the
+   right — the running number added nothing the order did not. */
+.ledger-item { padding: .95rem 1.25rem; gap: .9rem; align-items: center; }
+.ledger-avatar {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  background: var(--saffron-bg);
+  color: var(--primary-maroon);
+}
+.ledger-avatar .ico { width: 18px; height: 18px; }
+.ledger-money { text-align: right; }
+.ledger-money .amt {
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: var(--dark-brown);
+  font-variant-numeric: tabular-nums;
+}
+.ledger-money .sub { font-size: .78rem; color: var(--muted-brown); margin-top: .1rem; }
+.ledger-money .sub.is-due { color: var(--warning); }
+.ledger-row-end { display: flex; align-items: center; gap: .5rem; }
+
+/* ---------- Sort control --------------------------------------------- */
+.sort-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.sort-row .sort-label { font-size: .84rem; color: var(--muted-brown); }
+
+/* ---------- Measure -------------------------------------------------
+   Nothing capped the content width, so on a wide monitor every list
+   row stretched edge to edge and its two ends drifted apart — on the
+   payment screen the date sat at the far left and the amount at the
+   far right with a void between them, which is unreadable and was the
+   real fault behind "the payment UI is not proper". Capping the column
+   fixes it everywhere at once rather than page by page. Generous
+   enough for the seven-column calendar and a three-up card grid. */
+.content-wrapper {
+  max-width: 1360px;
+  margin-inline: auto;
+  width: 100%;
+}
+
+.row-item { gap: 1rem; }
+/* The value stays on the row's right edge — that is what makes a
+   column of amounts scannable. Capping .row-main instead left the
+   figures stranded mid-row with dead space beyond them. */
+
+/* ---------- Page header ---------------------------------------------- */
+.mg-page-head { margin-bottom: 1.35rem; gap: 1rem; }
+
+/* ---------- Badges -------------------------------------------------
+   styles.css ships four variants (confirmed / pending / cancelled /
+   maroon), but the app also asks for badge-gold, badge-ok, badge-info,
+   badge-warn and badge-danger, and in places uses a bare .badge with no
+   variant at all. Every one of those rendered as unstyled text — the
+   audit trail's action labels and the devotee category chip among them.
+   Defining them here makes every pill a pill, wherever it is used.
+
+   The bare-.badge default is scoped with :not so it cannot override a
+   variant: both selectors weigh the same, and this sheet loads last. */
+.badge:not([class*="badge-"]) { background: var(--warm-cream); color: var(--dark-brown); }
+.badge-confirmed { background: var(--success-bg); color: var(--success); }
+.badge-pending   { background: var(--warning-bg); color: #9A5B06; }
+.badge-maroon    { background: var(--warm-cream); color: var(--dark-brown); }
+.badge-gold      { background: var(--gold-bg);    color: #8A6A16; }
+.badge-ok        { background: var(--success-bg); color: var(--success); }
+.badge-info      { background: var(--saffron-bg); color: var(--saffron); }
+.badge-warn      { background: var(--warning-bg); color: #9A5B06; }
+.badge-danger    { background: var(--danger-bg);  color: var(--danger); }
+
+/* ============================================================
+   CONNECTED STAT STRIP
+   ------------------------------------------------------------
+   The figures read as one instrument panel divided by hairlines
+   rather than as separate floating cards, and the dashboard's
+   five lay out three-then-two. That second part is not just
+   taste: five equal columns squeeze a sum like Rs 1,79,18,000
+   until it breaks across lines. Kept when the theme layer was
+   removed, because it carries that fix.
+   ============================================================ */
+/* ---------- Connected stat strip ------------------------------------
+   Four figures read as one instrument panel, divided by hairlines,
+   instead of four floating boxes. The icon leads the number rather
+   than trailing it. */
+.stats-grid {
+  background: var(--ivory-card);
+  border: 1px solid rgba(229, 213, 192, .55);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  gap: 0;
+  overflow: hidden;
+  /* auto-fit, so figures share a row instead of leaving a fixed
+     four-column grid with a hole in it. */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+/* Exactly five figures (the dashboard) lay out three then two, as the
+   design does. Five equal columns squeezes a sum like ₹1,79,18,000
+   until it breaks across lines, which is unreadable; three-up gives
+   every figure room. Scoped by child count so the four-figure strips
+   on the seva pages keep their own even row. */
+.stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) {
+  grid-template-columns: repeat(6, 1fr);
+}
+.stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > * { grid-column: span 2; }
+.stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(4),
+.stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(5) {
+  grid-column: span 3;
+  /* The second band needs a rule above it. Without one the row floats,
+     and because three columns and two columns can never line up, its
+     single divider reads as a misalignment rather than a divider. */
+  border-top: 1px solid var(--warm-border);
+}
+/* First cell of a band starts it, so it carries no vertical rule. */
+.stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(4)::before {
+  display: none;
+}
+@media (max-width: 900px) {
+  /* Back to the stacked rule below the breakpoint. */
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) { grid-template-columns: 1fr; }
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > *,
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(4),
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(5) { grid-column: auto; }
+}
+/* Two components render a figure — .stat (pages) and .stat-card
+   (dashboard) — and both sit in this strip, so the treatment is
+   applied to whatever the grid's children are. */
+.stats-grid > * {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 1.15rem 1.25rem;
+  position: relative;
+}
+/* Hairline between segments. */
+.stats-grid > * + *::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 12%; bottom: 12%;
+  width: 1px;
+  background: var(--warm-border);
+}
+.stats-grid > *:hover { transform: none; box-shadow: none; border-color: transparent; }
+
+/* The icon leads the number in both components. */
+.stats-grid > .stat:has(.stat-ico),
+.stats-grid > .stat-card {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+.stat-text, .stat-card-info { flex: 1; min-width: 0; }
+.stat-card-info { display: flex; flex-direction: column; }
+.stat-ico,
+.stat-card-icon-wrapper {
+  border-radius: 50%;               /* the portal's own disc */
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+/* Temple sums run long (₹1,79,18,000), and five of them share a row,
+   so the figure scales with the column and is allowed to wrap rather
+   than be clipped by the strip's overflow. */
+.stat-card-value {
+  font-size: clamp(1.15rem, 1.15vw + 0.55rem, 1.7rem);
+  font-weight: 800;
+  margin-bottom: 0.15rem;
+  overflow-wrap: anywhere;
+}
+.stat-card-title { font-size: 0.82rem; font-weight: 500; margin-bottom: 0.15rem; }
+
+@media (max-width: 900px) {
+  /* Hairlines only make sense while the segments sit in one row. */
+  .stats-grid > * + *::before { display: none; }
+  .stats-grid > * { border-top: 1px solid var(--warm-border); }
+  .stats-grid > *:first-child { border-top: 0; }
+}
+
+
+/* ---------- Expandable rows (progressive disclosure) ------------------
+   Both busy lists — Payments and Devotee — now lead with only what the
+   operator scans for and keep the rest one tap down. The wrapper, not
+   the row, carries the separator, because the detail panel has to sit
+   inside the same hairline as the summary it belongs to. */
+.list-row { border-bottom: 1px solid var(--warm-border); background: #fff; }
+.list-row:last-child { border-bottom: 0; }
+.list-row > .row-item { border-bottom: 0; }
+/* An open row is marked by an accent down its edge rather than a wash,
+   because the figure band inside it is already ivory — tinting the row
+   the same colour erased the band. */
+.list-row.is-open { box-shadow: inset 3px 0 0 var(--primary-maroon); }
+.list-row.is-open > .row-item { background: transparent; }
+
+.row-expand {
+  flex-shrink: 0; color: var(--muted-brown);
+  transition: transform var(--transition-fast), color var(--transition-fast);
+}
+.row-expand:hover { color: var(--primary-maroon); }
+.list-row.is-open .row-expand { transform: rotate(90deg); color: var(--primary-maroon); }
+
+/* `display: flex` on a class beats the UA's `[hidden] { display: none }`,
+   which silently left every panel open — the toggle worked, nothing
+   moved. Anything given a display here must re-assert the hidden case. */
+.row-more {
+  display: flex; flex-direction: column; gap: .55rem;
+  padding: 0 1.5rem 1.15rem 1.5rem;
+}
+.row-more[hidden] { display: none; }
+
+/* The one figure that survives collapse, set beside the primary action
+   so the pair reads as "this much is owed → do this about it". */
+.collect-lead { display: flex; align-items: center; gap: .9rem; }
+.lead-fig { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+.lead-k { font-size: .7rem; font-weight: 600; letter-spacing: .02em;
+  text-transform: uppercase; color: var(--muted-brown); }
+.lead-v { font-family: var(--font-heading); font-weight: 800; font-size: 1.02rem;
+  font-variant-numeric: tabular-nums; color: var(--dark-brown); }
+.lead-fig.is-due .lead-v { color: var(--warning); }
+.lead-fig.is-extra .lead-v { color: var(--info, var(--primary-maroon)); }
+.lead-fig.is-ok .lead-v { color: var(--success); }
+
+.collect-meta .is-phone { display: inline-flex; align-items: center; gap: .3rem;
+  font-variant-numeric: tabular-nums; color: var(--dark-brown); font-weight: 600; }
+.collect-meta .is-phone .ico { width: 13px; height: 13px; color: var(--muted-brown); }
+
+/* Secondary actions live in the panel now, laid out as a wrapping row
+   rather than a right-hand stack that squeezed the name column. */
+.more-actions { display: flex; flex-wrap: wrap; gap: .45rem; padding-top: .15rem; }
+
+@media (max-width: 640px) {
+  /* Narrow: the name takes the first line on its own, then the figure,
+     its action and the chevron share the second. Letting the lead block
+     span the full width instead stranded the chevron on a third line. */
+  .list-row > .row-item { flex-wrap: wrap; row-gap: .5rem; }
+  .list-row > .row-item > .row-main { flex: 1 1 100%; }
+  .collect-lead { flex: 1 1 auto; justify-content: flex-start; text-align: left; }
+  .list-row > .row-item > .row-expand { margin-left: auto; }
+  .lead-fig { align-items: flex-start; }
+  .collect-lead .btn { margin-left: auto; }
+  .row-more { padding: 0 1.1rem 1rem 1.1rem; }
+}
+
+/* ---------- Padhramni row ---------------------------------------------
+   The lead figure here is a date, not money, so it is coloured by how
+   soon the visit is rather than by whether anything is owed. */
+.visit-row { align-items: flex-start; gap: 1rem; }
+.visit-row .row-main { display: flex; flex-direction: column; gap: .4rem; }
+
+/* Cinzel renders lowercase as small caps, which is right for a figure
+   and wrong for "In 3 days" — it reads as shouting. The date lead is
+   a phrase, so it stays in the body face. */
+.visit-row .lead-v { font-family: var(--font-body); font-size: .93rem; }
+
+.when-now  .lead-v { color: var(--primary-maroon); }
+.when-soon .lead-v { color: var(--warning); }
+.when-past .lead-v { color: var(--muted-brown); }
+.when-later .lead-v,
+.when-none .lead-v { color: var(--dark-brown); }
+
+/* One fact per line, each with its own icon, because an address, a
+   purpose and an escort list run together read as one sentence. */
+.vis-detail { display: flex; flex-direction: column; gap: .4rem; }
+.vis-line {
+  display: flex; align-items: flex-start; gap: .5rem;
+  font-size: .82rem; color: var(--dark-brown);
+}
+.vis-line .ico { flex-shrink: 0; margin-top: .12rem; color: var(--muted-brown); }
+.vis-line .muted { color: var(--muted-brown); }

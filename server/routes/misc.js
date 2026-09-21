@@ -16,12 +16,39 @@ router.get('/dashboard', (req, res) => {
 
   const devotees = one(`SELECT COUNT(*) AS n FROM devotees`).n;
   const sevarthi = one(`SELECT COUNT(*) AS n FROM sevarthi_bookings WHERE status <> 'cancelled'`).n;
-  const committed = one(`SELECT IFNULL(SUM(amount_committed),0) AS n FROM sevarthi_bookings WHERE status <> 'cancelled'`).n;
   const received = one(`SELECT IFNULL(SUM(amount),0) AS n FROM payments`).n;
+
+  /* Per booking, then summed — never committed-minus-received across the
+     whole Mahotsav. Netting globally lets one sevarthi's excess cancel
+     another's shortfall, which under-reports what is still to collect. */
+  const coverage = one(`
+    SELECT IFNULL(SUM(b.amount_committed), 0)                        AS committed,
+           IFNULL(SUM(IFNULL(pd.paid, 0)), 0)                        AS covered,
+           IFNULL(SUM(IFNULL(pd.devotee, 0)), 0)                     AS devotee_paid,
+           IFNULL(SUM(IFNULL(pd.bappa, 0)), 0)                       AS bappa_paid,
+           IFNULL(SUM(CASE WHEN b.amount_committed > IFNULL(pd.paid, 0)
+                           THEN b.amount_committed - IFNULL(pd.paid, 0) ELSE 0 END), 0) AS outstanding,
+           IFNULL(SUM(CASE WHEN IFNULL(pd.paid, 0) > b.amount_committed
+                           THEN IFNULL(pd.paid, 0) - b.amount_committed ELSE 0 END), 0) AS excess,
+           IFNULL(SUM(CASE WHEN IFNULL(pd.bappa, 0) > 0 THEN 1 ELSE 0 END), 0)          AS bappa_supported
+      FROM sevarthi_bookings b
+      LEFT JOIN (SELECT booking_id,
+                        SUM(amount)                                                  AS paid,
+                        SUM(CASE WHEN payer_type = 'bhuvaji' THEN amount ELSE 0 END) AS bappa,
+                        SUM(CASE WHEN payer_type = 'bhuvaji' THEN 0 ELSE amount END) AS devotee
+                   FROM payments GROUP BY booking_id) pd ON pd.booking_id = b.id
+     WHERE b.status <> 'cancelled'
+  `);
+  const committed = coverage.committed;
   const receivedToday = one(`SELECT IFNULL(SUM(amount),0) AS n FROM payments WHERE payment_date = ?`, today).n;
   const receivedMonth = one(`SELECT IFNULL(SUM(amount),0) AS n FROM payments WHERE substr(payment_date,1,7) = ?`, month).n;
   const bhuvajiCovered = one(`SELECT IFNULL(SUM(amount),0) AS n FROM payments WHERE payer_type='bhuvaji'`).n;
   const pending = one(`SELECT COUNT(*) AS n FROM sevarthi_bookings WHERE status IN ('pending','partially_paid')`).n;
+  const pendingOnly = one(`SELECT COUNT(*) AS n FROM sevarthi_bookings WHERE status = 'pending'`).n;
+  const partial = one(`SELECT COUNT(*) AS n FROM sevarthi_bookings WHERE status = 'partially_paid'`).n;
+  const registeredToday = one(
+    `SELECT COUNT(*) AS n FROM sevarthi_bookings
+      WHERE substr(created_at, 1, 10) = ? AND status <> 'cancelled'`, today).n;
   const donationsTotal = one(`SELECT IFNULL(SUM(amount),0) AS n FROM donations`).n;
   const upcomingVisits = one(
     `SELECT COUNT(*) AS n FROM visits WHERE visit_date >= ? AND status <> 'cancelled'`, today).n;
@@ -35,7 +62,9 @@ router.get('/dashboard', (req, res) => {
        WHERE pe.category = ?
     `).get(c.key);
     const money = db.prepare(`
-      SELECT IFNULL(SUM(pe.target_amount),0) AS target FROM pooja_events pe WHERE pe.category = ?
+      SELECT IFNULL(SUM(pe.target_amount),0) AS target,
+             SUM(CASE WHEN pe.capacity_mode = 'not_decided' THEN 1 ELSE 0 END) AS not_decided
+        FROM pooja_events pe WHERE pe.category = ?
     `).get(c.key);
     const got = db.prepare(`
       SELECT IFNULL(SUM(p.amount),0) AS n FROM payments p
@@ -44,6 +73,27 @@ router.get('/dashboard', (req, res) => {
         JOIN pooja_events pe ON pe.id = ps.pooja_id
        WHERE pe.category = ?
     `).get(c.key).n;
+    /* Same per-booking coverage shape as the headline figures — the
+       category rows must add up to them, so they are computed the
+       same way rather than re-derived from the payments total. */
+    const cov = db.prepare(`
+      SELECT COUNT(*)                                                  AS registered,
+             IFNULL(SUM(b.amount_committed), 0)                        AS committed,
+             IFNULL(SUM(IFNULL(pd.paid, 0)), 0)                        AS covered,
+             IFNULL(SUM(IFNULL(pd.bappa, 0)), 0)                       AS bappa_paid,
+             IFNULL(SUM(CASE WHEN b.amount_committed > IFNULL(pd.paid, 0)
+                             THEN b.amount_committed - IFNULL(pd.paid, 0) ELSE 0 END), 0) AS outstanding,
+             IFNULL(SUM(CASE WHEN IFNULL(pd.paid, 0) > b.amount_committed
+                             THEN IFNULL(pd.paid, 0) - b.amount_committed ELSE 0 END), 0) AS excess
+        FROM sevarthi_bookings b
+        JOIN pooja_slots  ps ON ps.id = b.slot_id
+        JOIN pooja_events pe ON pe.id = ps.pooja_id
+        LEFT JOIN (SELECT booking_id,
+                          SUM(amount)                                                  AS paid,
+                          SUM(CASE WHEN payer_type = 'bhuvaji' THEN amount ELSE 0 END) AS bappa
+                     FROM payments GROUP BY booking_id) pd ON pd.booking_id = b.id
+       WHERE pe.category = ? AND b.status <> 'cancelled'
+    `).get(c.key);
     return {
       ...c,
       seats: r.open_days > 0 ? null : r.seats,
@@ -51,6 +101,13 @@ router.get('/dashboard', (req, res) => {
       seats_left: r.open_days > 0 ? null : Math.max(0, r.seats - r.booked),
       target: money.target,
       received: got,
+      not_decided: money.not_decided,
+      registered: cov.registered,
+      committed: cov.committed,
+      covered: cov.covered,
+      bappa_paid: cov.bappa_paid,
+      outstanding: cov.outstanding,
+      excess: cov.excess,
     };
   });
 
@@ -68,7 +125,15 @@ router.get('/dashboard', (req, res) => {
     stats: {
       devotees, sevarthi, committed, received, receivedToday, receivedMonth,
       bhuvajiCovered, pending, donationsTotal, upcomingVisits,
-      outstanding: Math.max(0, committed - received),
+      /* Coverage figures are per-booking sums (see the query above), so
+         `outstanding` here is genuinely what is left to collect. */
+      covered: coverage.covered,
+      devoteeCollected: coverage.devotee_paid,
+      bappaSupport: coverage.bappa_paid,
+      outstanding: coverage.outstanding,
+      excess: coverage.excess,
+      bappaSupported: coverage.bappa_supported,
+      pendingOnly, partial, registeredToday,
     },
     categories,
     todaySlots,

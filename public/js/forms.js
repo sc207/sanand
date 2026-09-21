@@ -148,7 +148,7 @@
             <input class="form-input" id="f_full_name" name="full_name" autocomplete="name" value="${attr(inq.full_name || '')}">
           </div>
           <div class="form-row">
-            <div class="form-group"><label class="form-label" for="f_mobile">Mobile No.</label>
+            <div class="form-group"><label class="form-label req" for="f_mobile">Mobile No.</label>
               <input class="form-input" id="f_mobile" name="mobile" inputmode="tel" autocomplete="tel" value="${attr(inq.mobile || '')}"></div>
             <div class="form-group"><label class="form-label" for="f_city">City</label>
               <input class="form-input" id="f_city" name="city" value="${attr(inq.city || '')}"></div>
@@ -190,20 +190,39 @@
           b.addEventListener('click', () => {
             catFilter = b.getAttribute('data-catf');
             state.catFilter = catFilter;
+            showAllSeva = false;        // a new filter starts collapsed again
             paintFilters();
             paintResults();
           }));
       };
 
+      /* The list is ranked best-fit first, so the answer is almost
+         always in the first few. Showing all thirty-five buried the
+         form's own fields under a wall of cards; five plus a count is
+         enough to choose from, and the rest are one tap away. */
+      const SEVA_PREVIEW = 5;
+      let showAllSeva = false;
+
       const paintResults = () => {
         const budget = Number(form.budget.value || 0);
         const expDate = form.expected_date.value || '';
         const ranked = rankPoojas(allPoojas, { expDate, budget, catFilter });
+        const shown = showAllSeva ? ranked : ranked.slice(0, SEVA_PREVIEW);
+        const hidden = ranked.length - shown.length;
 
         const box = document.getElementById('sevResults');
         box.innerHTML = ranked.length
-          ? `<div class="stack">${ranked.map(({ p, dateRank, overBudget }) => sevaCard(p, dateRank, overBudget)).join('')}</div>`
+          ? `<div class="stack">${shown.map(({ p, dateRank, overBudget }) => sevaCard(p, dateRank, overBudget)).join('')}</div>
+             ${hidden > 0 ? `<button type="button" class="btn btn-outline btn-block" id="sevMore" style="margin-top:.7rem">
+                 Show ${esc(String(hidden))} more seva</button>` : ''}
+             ${showAllSeva && ranked.length > SEVA_PREVIEW ? `<button type="button"
+                 class="btn btn-outline btn-block" id="sevLess" style="margin-top:.7rem">Show fewer</button>` : ''}`
           : UI.empty('Nothing open right now', 'Every seva in this filter is either full or closed.', 'temple');
+
+        const more = box.querySelector('#sevMore');
+        if (more) more.addEventListener('click', () => { showAllSeva = true; paintResults(); });
+        const less = box.querySelector('#sevLess');
+        if (less) less.addEventListener('click', () => { showAllSeva = false; paintResults(); });
 
         box.querySelectorAll('[data-pooja]').forEach((b) =>
           b.addEventListener('click', () => {
@@ -213,6 +232,16 @@
               showFieldError(form, 'full_name', 'Please enter the name first');
               form.full_name.scrollIntoView({ behavior: 'smooth', block: 'center' });
               form.full_name.focus();
+              return;
+            }
+            /* Caught here rather than four steps later: the booking will
+               be refused without it, and re-entering the whole form at
+               the end is the expensive way to find that out. */
+            const mobileMsg = UI.mobileError(data.mobile);
+            if (mobileMsg) {
+              showFieldError(form, 'mobile', mobileMsg);
+              form.mobile.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              form.mobile.focus();
               return;
             }
             state.inquiry = data;
@@ -305,7 +334,7 @@
             <div class="form-hint" id="dupHint"></div>
           </div>
           <div class="form-row">
-            <div class="form-group"><label class="form-label" for="f_mobile">Mobile No.</label>
+            <div class="form-group"><label class="form-label req" for="f_mobile">Mobile No.</label>
               <input class="form-input" id="f_mobile" name="mobile" inputmode="tel" autocomplete="tel" value="${attr(inq.mobile || '')}"></div>
             <div class="form-group"><label class="form-label" for="f_city">City</label>
               <input class="form-input" id="f_city" name="city" value="${attr(inq.city || '')}"></div>
@@ -369,6 +398,8 @@
         const data = readForm(form);
 
         if (!data.full_name) return showFieldError(form, 'full_name', 'Please enter the name');
+        const mobileMsg = UI.mobileError(data.mobile);
+        if (mobileMsg) return showFieldError(form, 'mobile', mobileMsg);
         const total = Number(data.amount_committed || 0);
         const bapa = readBhuvajiAmount(data);
         if (bapa > total) return showFieldError(form, 'bhuvaji_planned_amount', "Bapa's share cannot exceed the total");
@@ -432,7 +463,7 @@
               return `
               <button class="row-item" data-booking="${attr(r.booking_id)}">
                 <div class="row-main">
-                  <div class="row-title">${esc(r.full_name)} ${statusBadge(r.status)}</div>
+                  <div class="row-title">${esc(r.full_name)} ${UI.coverageBadges(r)}</div>
                   <div class="row-sub">${esc(r.pooja_name)} · ${esc(fmtDate(r.slot_date))}
                     ${r.samaj ? ' · ' + esc(r.samaj) : ''}${r.mobile ? ' · ' + esc(r.mobile) : ''}</div>
                 </div>
@@ -454,15 +485,84 @@
     });
   }
 
-  async function paymentForm(bookingId) {
-    const b = await API.get(`/bookings/${bookingId}`);
-    const due = Math.max(0, b.amount_committed - b.amount_paid);
-
+  /* Correct an entry that was typed wrong. The ledger stays the source
+     of truth — the booking's status is recomputed server-side from the
+     corrected rows — and the change is audited with the before/after,
+     so fixing a typo is not the same as quietly rewriting history. */
+  function editPayment(p, onSaved) {
     openSheet({
-      title: 'Record Payment',
+      title: 'Correct payment entry',
       body: `
         <div class="card" style="margin-bottom:.8rem"><div class="card-body" style="padding:.7rem .85rem">
-          <div class="row-title">${esc(b.full_name)} ${statusBadge(b.status)}</div>
+          <div class="row-title">${esc(p.full_name)}</div>
+          <div class="row-sub">${esc(p.pooja_name)} · recorded by ${esc(p.recorded_by || '—')}</div>
+        </div></div>
+        <form id="payEditForm" novalidate>
+          <div class="form-group">
+            <label class="form-label req" for="f_amount">Amount</label>
+            <input class="form-input" id="f_amount" name="amount" type="number" min="1" step="1"
+                   value="${attr(p.amount)}" inputmode="numeric" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Paid by</label>
+            <div class="btn-row">
+              <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
+                <input type="radio" name="payer_type" value="devotee" ${p.payer_type !== 'bhuvaji' ? 'checked' : ''}
+                       style="width:auto;min-height:0;margin-right:.35rem"> Devotee</label>
+              <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
+                <input type="radio" name="payer_type" value="bhuvaji" ${p.payer_type === 'bhuvaji' ? 'checked' : ''}
+                       style="width:auto;min-height:0;margin-right:.35rem"> Bapa</label>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label" for="f_payment_date">Date</label>
+              <input class="form-input" id="f_payment_date" name="payment_date" type="date" value="${attr(p.payment_date)}"></div>
+            <div class="form-group"><label class="form-label" for="f_receipt_no">Receipt No.</label>
+              <input class="form-input" id="f_receipt_no" name="receipt_no" value="${attr(p.receipt_no || '')}"></div>
+          </div>
+          <div class="form-group"><label class="form-label" for="f_notes">Note</label>
+            <input class="form-input" id="f_notes" name="notes" data-translate value="${attr(p.notes || '')}"></div>
+          <p class="small muted" style="margin:0">The sevarthi's status is recalculated from the ledger
+            once this is saved, and the correction is written to the audit log.</p>
+        </form>`,
+      footer: `<button class="btn btn-outline" data-sheet-close>Cancel</button>
+               <button class="btn btn-primary" id="payEditSave">Save correction</button>`,
+      onMount(sheet) {
+        sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
+        sheet.querySelector('#payEditSave').addEventListener('click', async (e) => {
+          const form = document.getElementById('payEditForm');
+          clearFieldErrors(form);
+          const data = readForm(form);
+          if (!(Number(data.amount) > 0)) return showFieldError(form, 'amount', 'Enter an amount');
+          e.currentTarget.disabled = true;
+          try {
+            const res = await API.put('/payments/' + p.id, data);
+            closeSheet();
+            toast(`Corrected — ${String(res.booking_status || '').replace('_', ' ') || 'updated'}`, 'ok');
+            if (typeof onSaved === 'function') onSaved();
+            else if (typeof refreshPage === 'function') refreshPage();
+          } catch (err) {
+            e.currentTarget.disabled = false;
+            toast(err.message, 'err');
+          }
+        });
+      },
+    });
+  }
+
+  /* `preset.payer_type` opens the form already set to Bapa, so "Add
+     Bapa support" from the collections list is one click rather than
+     a payment form the operator then has to re-point at Bapa. */
+  async function paymentForm(bookingId, preset) {
+    const b = await API.get(`/bookings/${bookingId}`);
+    const due = Math.max(0, b.amount_committed - b.amount_paid);
+    const asBapa = !!(preset && preset.payer_type === 'bhuvaji');
+
+    openSheet({
+      title: asBapa ? 'Add Bapa Support' : 'Record Payment',
+      body: `
+        <div class="card" style="margin-bottom:.8rem"><div class="card-body" style="padding:.7rem .85rem">
+          <div class="row-title">${esc(b.full_name)} ${UI.coverageBadges(b)}</div>
           <div class="row-sub">${esc(b.pooja_name)} · ${esc(fmtDate(b.slot_date))}</div>
           <div class="divider" style="margin:.55rem 0"></div>
           <div style="display:flex;justify-content:space-between;font-size:.82rem">
@@ -484,9 +584,9 @@
             <label class="form-label">Paid by</label>
             <div class="btn-row">
               <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
-                <input type="radio" name="payer_type" value="devotee" checked style="width:auto;min-height:0;margin-right:.35rem"> Devotee</label>
+                <input type="radio" name="payer_type" value="devotee" ${asBapa ? '' : 'checked'} style="width:auto;min-height:0;margin-right:.35rem"> Devotee</label>
               <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
-                <input type="radio" name="payer_type" value="bhuvaji" style="width:auto;min-height:0;margin-right:.35rem"> Bapa</label>
+                <input type="radio" name="payer_type" value="bhuvaji" ${asBapa ? 'checked' : ''} style="width:auto;min-height:0;margin-right:.35rem"> Bapa</label>
             </div>
           </div>
           <div class="form-row">
@@ -537,7 +637,7 @@
       title: 'Edit Sevarthi',
       body: `
         <div class="card" style="margin-bottom:.8rem"><div class="card-body" style="padding:.7rem .85rem">
-          <div class="row-title">${esc(b.full_name)} ${statusBadge(b.status)}</div>
+          <div class="row-title">${esc(b.full_name)} ${UI.coverageBadges(b)}</div>
           <div class="row-sub">${esc(b.pooja_name)} · ${esc(fmtDate(b.slot_date))}</div>
           <div class="divider" style="margin:.55rem 0"></div>
           <div style="display:flex;justify-content:space-between;font-size:.82rem">
@@ -566,7 +666,7 @@
         <button class="btn btn-primary" id="editSave" ${b.status === 'cancelled' ? 'disabled' : ''}>Save Changes</button>`,
       onMount(sheet) {
         sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
-        sheet.querySelector('[data-view-history]').addEventListener('click', () => bookingHistory(bookingId, b.full_name));
+        sheet.querySelector('[data-view-history]').addEventListener('click', () => bookingLedger(bookingId));
         const changeSevaBtn = sheet.querySelector('[data-change-seva]');
         if (changeSevaBtn) changeSevaBtn.addEventListener('click', () => reassignBooking(bookingId));
         const cancelBtn = sheet.querySelector('[data-cancel-booking]');
@@ -815,6 +915,117 @@
   /** Read-only timeline of everything that's happened to one booking —
       reassignments (from → to seva), amount edits and cancellation —
       sourced from the same audit_log every other write already logs to. */
+  /* The sevarthi's full money record: every payment entry, correctable
+     and removable here, then the change history underneath. This is
+     where correcting an entry lives now that the Payments page is a
+     collections list rather than a cash book — without it, removing
+     that view would have taken the only route to a mistyped payment
+     with it. */
+  async function bookingLedger(bookingId, onChanged) {
+    openSheet({
+      title: 'Ledger',
+      body: `<div id="blBody">${UI.loading(4)}</div>`,
+      footer: `<button class="btn btn-outline" data-sheet-close>Close</button>`,
+      async onMount(sheet) {
+        sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
+        await paint();
+
+        async function paint() {
+          const box = document.getElementById('blBody');
+          if (!box) return;
+          box.innerHTML = UI.loading(4);
+          try {
+            const [b, audit] = await Promise.all([
+              API.get('/bookings/' + bookingId),
+              API.audit({ entity: 'booking', entity_id: bookingId, limit: 100 }),
+            ]);
+            document.getElementById('sheetTitle').textContent = 'Ledger — ' + b.full_name;
+            const c = UI.coverage(b);
+
+            const line = (label, value, cls) =>
+              `<div style="display:flex;justify-content:space-between;font-size:.82rem${cls ? ';color:' + cls : ''}">
+                 <span class="muted">${esc(label)}</span><strong>${esc(money(value))}</strong></div>`;
+
+            const ACTION_BADGE = { create: 'badge-confirmed', update: 'badge-maroon', cancel: 'badge-cancelled', payment: 'badge-gold', delete: 'badge-danger' };
+
+            box.innerHTML = `
+              <div class="card" style="margin-bottom:.9rem"><div class="card-body" style="padding:.75rem .9rem">
+                <div class="row-title">${esc(b.full_name)} ${UI.coverageBadges(b)}</div>
+                <div class="row-sub">${esc(b.pooja_name)} · ${esc(fmtDate(b.slot_date))}</div>
+                <div class="divider" style="margin:.55rem 0"></div>
+                ${line('Contribution', c.committed)}
+                ${line('Devotee paid', c.devotee_paid)}
+                ${c.bappa_paid ? line("Bapa's support", c.bappa_paid, 'var(--warning)') : ''}
+                ${c.outstanding > 0 ? line('Outstanding', c.outstanding, 'var(--danger)')
+                  : c.excess > 0 ? line('Excess', c.excess, 'var(--saffron)') : ''}
+              </div></div>
+
+              <div class="section-title" style="margin:0 0 .5rem">Payments</div>
+              ${b.payments && b.payments.length ? `<div class="card"><div class="card-body" style="padding:0"><div class="list">
+                ${b.payments.map((p) => `
+                  <div class="row-item" style="cursor:default">
+                    <div class="row-main">
+                      <div class="row-title">${esc(money(p.amount))}
+                        ${p.payer_type === 'bhuvaji' ? '<span class="badge badge-gold">Bapa</span>' : ''}</div>
+                      <div class="row-sub">${esc(fmtDate(p.payment_date))}
+                        ${p.receipt_no ? ' · #' + esc(p.receipt_no) : ''} · by ${esc(p.recorded_by || '—')}</div>
+                      ${p.notes ? `<div class="row-sub">${esc(p.notes)}</div>` : ''}
+                    </div>
+                    <div class="row-actions">
+                      <button class="icon-btn" data-pedit="${attr(p.id)}" title="Correct this entry"
+                              style="color:var(--ink-soft)">${icon('edit','ico-sm')}</button>
+                      <button class="icon-btn" data-pdel="${attr(p.id)}" title="Remove this entry"
+                              style="color:var(--ink-soft)">${icon('trash','ico-sm')}</button>
+                    </div>
+                  </div>`).join('')}
+              </div></div></div>` : `<p class="small muted">Nothing received against this seva yet.</p>`}
+
+              <div class="section-title" style="margin:1.1rem 0 .5rem">Change history</div>
+              ${audit.length ? `<div class="card"><div class="card-body" style="padding:0"><div class="list">
+                ${audit.map((a) => `
+                  <div class="row-item" style="cursor:default;align-items:flex-start">
+                    <span class="badge ${ACTION_BADGE[a.action] || ''}">${esc(a.action)}</span>
+                    <div class="row-main">
+                      <div class="row-title" style="font-weight:500;white-space:normal">${esc(a.summary)}</div>
+                      <div class="row-sub">${esc(a.user_name)} · <span title="${attr(a.created_at)}">${esc(UI.ago(a.created_at))}</span></div>
+                    </div>
+                  </div>`).join('')}
+              </div></div></div>` : `<p class="small muted">No changes recorded yet.</p>`}`;
+
+            const refresh = async () => { await paint(); if (typeof onChanged === 'function') onChanged(); };
+
+            box.querySelectorAll('[data-pedit]').forEach((el) =>
+              el.addEventListener('click', () => {
+                const p = b.payments.find((x) => String(x.id) === el.getAttribute('data-pedit'));
+                /* editPayment needs the devotee/pooja names for its header,
+                   which the booking row already carries. */
+                editPayment(Object.assign({}, p, { full_name: b.full_name, pooja_name: b.pooja_name }),
+                  () => bookingLedger(bookingId, onChanged));
+              }));
+
+            box.querySelectorAll('[data-pdel]').forEach((el) =>
+              el.addEventListener('click', () => {
+                UI.confirmSheet({
+                  title: 'Remove this payment?',
+                  message: 'The entry is deleted and the sevarthi status recalculated from what remains. ' +
+                           'The removal is written to the audit trail.',
+                  confirmLabel: 'Remove', danger: true,
+                  onConfirm: async () => {
+                    await API.del('/payments/' + el.getAttribute('data-pdel'));
+                    toast('Payment entry removed', 'ok');
+                    bookingLedger(bookingId, onChanged);
+                  },
+                });
+              }));
+            void refresh;
+          } catch (e) {
+            box.innerHTML = UI.errorState(e.message);
+          }
+        }
+      },
+    });
+  }
+
   async function bookingHistory(bookingId, fullName) {
     openSheet({
       title: 'Change History — ' + fullName,
@@ -859,7 +1070,7 @@
       body: `
         <form id="lkForm" novalidate>
           <div class="form-group">
-            <label class="form-label req" for="f_value">${esc(title.replace('Add ', ''))} Name</label>
+            <label class="form-label req" for="f_value">${esc(title.replace(/^(Add|Manage) /, ''))} Name</label>
             <input class="form-input" id="f_value" name="value" autocomplete="off">
           </div>
         </form>
@@ -871,15 +1082,42 @@
         sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
         const paint = async () => {
           const items = await API.lookups(type);
+          /* Renaming in place beats delete-and-re-add: devotees point at
+             the row by id, so a corrected spelling fixes every devotee
+             at once instead of orphaning them. */
           document.getElementById('lkList').innerHTML = items.length
             ? `<div class="list">${items.map((i) => `
                 <div class="row-item" style="cursor:default">
-                  <div class="row-main"><div class="row-title">${esc(i.value)}</div></div>
-                  <button class="icon-btn" data-del="${attr(i.id)}" title="Remove" style="color:var(--ink-soft)">
-                    ${icon('trash','ico-sm')}</button>
+                  <div class="row-main"><input class="form-input lk-rename" data-rename="${attr(i.id)}"
+                        value="${attr(i.value)}" aria-label="Rename ${attr(i.value)}"></div>
+                  <div class="row-actions">
+                    <button class="icon-btn" data-save="${attr(i.id)}" title="Save name" hidden
+                            style="color:var(--primary-maroon)">${icon('check','ico-sm')}</button>
+                    <button class="icon-btn" data-del="${attr(i.id)}" title="Remove" style="color:var(--ink-soft)">
+                      ${icon('trash','ico-sm')}</button>
+                  </div>
                 </div>`).join('')}</div>`
             : UI.empty('Nothing added yet', '', 'plus');
-          document.querySelectorAll('[data-del]').forEach((b) =>
+
+          const listEl = document.getElementById('lkList');
+          listEl.querySelectorAll('[data-rename]').forEach((input) => {
+            const id = input.getAttribute('data-rename');
+            const original = input.value;
+            const saveBtn = listEl.querySelector(`[data-save="${id}"]`);
+            const sync = () => { saveBtn.hidden = input.value.trim() === original || !input.value.trim(); };
+            input.addEventListener('input', sync);
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveBtn.click(); } });
+            saveBtn.addEventListener('click', async () => {
+              try {
+                await API.put('/lookups/' + id, { value: input.value.trim() });
+                toast('Renamed', 'ok');
+                await paint();
+                if (typeof refreshPage === 'function') refreshPage();
+              } catch (e) { toast(e.message, 'err'); input.value = original; sync(); }
+            });
+          });
+
+          listEl.querySelectorAll('[data-del]').forEach((b) =>
             b.addEventListener('click', async () => {
               try { await API.del('/lookups/' + b.getAttribute('data-del')); paint(); toast('Removed', 'ok'); }
               catch (e) { toast(e.message, 'err'); }
@@ -970,7 +1208,7 @@
                 </button>`).join('')}</div>` : ''}
               ${bookings.length ? `<div class="section-title">Sevarthi bookings</div><div class="list">${bookings.slice(0, 8).map((b) => `
                 <button class="row-item" data-bk="${attr(b.id)}">
-                  <div class="row-main"><div class="row-title">${esc(b.full_name)} ${statusBadge(b.status)}</div>
+                  <div class="row-main"><div class="row-title">${esc(b.full_name)} ${UI.coverageBadges(b)}</div>
                     <div class="row-sub">${esc(b.pooja_name)} · ${esc(fmtDate(b.slot_date))}</div></div>
                   <div class="row-end"><div class="row-amount">${esc(money(b.amount_paid))}</div>
                     <div class="small muted">of ${esc(money(b.amount_committed))}</div></div>
@@ -1023,7 +1261,8 @@
   }
 
   global.Forms = {
-    addSevarthi, addPayment, paymentForm, editBooking, cancelBooking, reassignBooking, bookingHistory,
+    addSevarthi, addPayment, paymentForm, editPayment, editBooking, cancelBooking, reassignBooking,
+    bookingHistory, bookingLedger,
     addLookupSheet, quickAddMenu, globalSearch, switchUser,
   };
 })(window);

@@ -2,6 +2,13 @@
   'use strict';
   const { esc, attr, money, num, icon, fmtDate, fmtDateLong, progressBar } = UI;
 
+  /* The audit log's action, shown as a mark so the feed can be scanned
+     down the left edge rather than read line by line. */
+  const ACTIVITY_ICON = {
+    create: 'plus', update: 'edit', delete: 'trash',
+    cancel: 'close', payment: 'rupee',
+  };
+
   /* sk's KPI card shape, with a line icon in place of the old emoji. */
   function kpi(title, value, meta, iconName, tone) {
     return `
@@ -143,16 +150,21 @@
       </div>
 
       <div class="stats-grid">
-        ${kpi('Received', money(s.received), money(s.receivedToday) + ' today', 'rupee', 'icon-donation-bg')}
+        ${kpi('Received', money(s.received), money(s.receivedToday) + ' today', 'wallet', 'icon-donation-bg')}
         ${kpi('Outstanding', money(s.outstanding), num(s.pending) + ' sevarthi pending', 'clock', 'icon-events-bg')}
-        ${kpi('Sevarthi', num(s.sevarthi), num(s.devotees) + ' devotees registered', 'seat', 'icon-devotees-bg')}
-        ${kpi("Bapa's Support", money(s.bhuvajiCovered), 'covered for sevarthi', 'diya', 'icon-diya-bg')}
+        ${kpi('Sevarthi', num(s.sevarthi), num(s.devotees) + ' devotees registered', 'user-check', 'icon-devotees-bg')}
+        ${kpi("Bapa's Support", money(s.bappaSupport), num(s.bappaSupported) + ' sevarthi supported', 'diya', 'icon-diya-bg')}
+        ${s.excess > 0
+          ? kpi('Excess', money(s.excess), 'given above commitment', 'trending-up', 'icon-donation-bg')
+          : ''}
       </div>
 
       <div class="section-title">Mahotsav Progress</div>
+      <div class="seva-grid">
       ${d.categories.map((c) => {
         const seatText = c.seats === null
-          ? `${num(c.booked)} joined · open seating`
+          ? `${num(c.registered)} registered` +
+            (c.not_decided ? ` · ${num(c.not_decided)} awaiting a capacity decision` : ' · open seating')
           : `${num(c.booked)} / ${num(c.seats)} patla booked`;
         return `
         <button class="card cat-card" data-cat="${attr(c.key)}">
@@ -169,10 +181,13 @@
               <span>${esc(money(c.received))} received</span>
               <span>${c.target ? 'target ' + esc(money(c.target)) : ''}</span>
             </div>
-            ${progressBar(c.received, c.target || c.received || 1, true)}
+            ${/* No target means nothing to measure against — a full bar
+                  there would read as "done" when nobody set a goal. */
+              c.target > 0 ? progressBar(c.received, c.target, true) : ''}
           </div>
         </button>`;
       }).join('')}
+      </div>
 
       ${d.todaySlots.length ? `
         <div class="section-title">Today at the mandir</div>
@@ -195,9 +210,10 @@
       <div class="card"><div class="card-body" style="padding:0">
         ${d.recentActivity.length ? `<div class="list">${d.recentActivity.map((a) => `
           <div class="row-item" style="cursor:default">
+            <span class="ledger-avatar" aria-hidden="true">${icon(ACTIVITY_ICON[a.action] || 'history')}</span>
             <div class="row-main">
               <div class="row-title" style="font-weight:500;white-space:normal">${esc(a.summary)}</div>
-              <div class="row-sub">${esc(a.user_name)} · ${esc(a.created_at)}</div>
+              <div class="row-sub">${esc(a.user_name)} · <span title="${attr(a.created_at)}">${esc(UI.ago(a.created_at))}</span></div>
             </div>
           </div>`).join('')}</div>`
           : UI.empty('No activity yet', 'Entries will appear here as you add them.', 'history')}

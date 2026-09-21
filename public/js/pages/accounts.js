@@ -62,22 +62,31 @@
     }, 280));
   }
 
+  /* The trail is the longest list in the app — every write ever made —
+     so it pages. `rows` is kept so paging does not refetch. */
+  let auditRows = [];
+  let auditPage = 1;
+
   function paintAudit(rows) {
     const list = document.getElementById('auditList');
     if (!list) return;
+    if (rows) { auditRows = rows; auditPage = 1; }
     const ACTION = {
       create: 'badge-ok', update: 'badge-info', delete: 'badge-danger',
       cancel: 'badge-warn', payment: 'badge-gold',
     };
-    list.innerHTML = rows.length ? `<div class="list">${rows.map((a) => `
+    const pg = UI.paginate(auditRows, auditPage);
+    list.innerHTML = auditRows.length ? `<div class="list">${pg.slice.map((a) => `
       <div class="row-item" style="cursor:default;align-items:flex-start">
         <span class="badge ${ACTION[a.action] || ''}">${esc(a.action)}</span>
         <div class="row-main">
           <div class="row-title" style="font-weight:500;white-space:normal">${esc(a.summary)}</div>
-          <div class="row-sub">${esc(a.user_name)} · ${esc(a.created_at)}</div>
+          <div class="row-sub">${esc(a.user_name)} ·
+            <span title="${attr(a.created_at)}">${esc(UI.ago(a.created_at))}</span></div>
         </div>
-      </div>`).join('')}</div>`
+      </div>`).join('')}</div>${UI.pager(pg, 'entries')}`
       : UI.empty('Nothing logged yet', 'Every add, edit and delete will appear here.', 'history');
+    UI.bindPager(list, (d) => { auditPage = pg.page + d; paintAudit(null); });
   }
 
   function userForm(existing) {

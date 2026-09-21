@@ -22,18 +22,28 @@
       <div class="card">
         <div class="card-header"><h2>Temple Identity</h2></div>
         <div class="card-body">
+          <!-- Paired across two columns: a page-level card is the full
+               width of the content column, and one field per row left
+               most of it empty while making the form look longer than
+               the five fields it is. -->
           <form id="setForm">
-            <div class="form-group"><label class="form-label" for="f_temple_name">Temple Name (Gujarati)</label>
-              <input class="form-input" id="f_temple_name" name="temple_name" value="${attr(s.temple_name || '')}"></div>
-            <div class="form-group"><label class="form-label" for="f_temple_name_en">Temple Name (English)</label>
-              <input class="form-input" id="f_temple_name_en" name="temple_name_en" value="${attr(s.temple_name_en || '')}"></div>
-            <div class="form-group"><label class="form-label" for="f_temple_location">Location</label>
-              <input class="form-input" id="f_temple_location" name="temple_location" value="${attr(s.temple_location || '')}"></div>
-            <div class="form-group"><label class="form-label" for="f_trust_head">Trust Head / Bhuvaji</label>
-              <input class="form-input" id="f_trust_head" name="trust_head" value="${attr(s.trust_head || '')}"></div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label" for="f_temple_name">Temple Name (Gujarati)</label>
+                <input class="form-input" id="f_temple_name" name="temple_name" value="${attr(s.temple_name || '')}"></div>
+              <div class="form-group"><label class="form-label" for="f_temple_name_en">Temple Name (English)</label>
+                <input class="form-input" id="f_temple_name_en" name="temple_name_en" value="${attr(s.temple_name_en || '')}"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label" for="f_temple_location">Location</label>
+                <input class="form-input" id="f_temple_location" name="temple_location" value="${attr(s.temple_location || '')}"></div>
+              <div class="form-group"><label class="form-label" for="f_trust_head">Trust Head / Bhuvaji</label>
+                <input class="form-input" id="f_trust_head" name="trust_head" value="${attr(s.trust_head || '')}"></div>
+            </div>
             <div class="form-group"><label class="form-label" for="f_mahotsav_name">Mahotsav Name</label>
               <input class="form-input" id="f_mahotsav_name" name="mahotsav_name" value="${attr(s.mahotsav_name || '')}"></div>
-            <button type="button" class="btn btn-primary btn-block" id="setSave">Save Details</button>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary" id="setSave">Save Details</button>
+            </div>
           </form>
         </div>
       </div>
@@ -73,7 +83,7 @@
 
     host.querySelectorAll('[data-list]').forEach((b) =>
       b.addEventListener('click', () =>
-        Forms.addLookupSheet(b.getAttribute('data-list'), 'Add ' + b.getAttribute('data-label'))));
+        Forms.addLookupSheet(b.getAttribute('data-list'), 'Manage ' + b.getAttribute('data-label'))));
   }
 
   global.Pages = global.Pages || {};

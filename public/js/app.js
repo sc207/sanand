@@ -7,7 +7,7 @@
   const PAGES = {
     dashboard:  { title: 'Dashboard' },
     mahotsav:   { title: 'Murti Pran Pratishtha Mahotsav' },
-    payments:   { title: 'Payment Received' },
+    payments:   { title: 'Payments' },
     devotees:   { title: 'Devotee' },
     visits:     { title: 'Bappa / Bhuvaji Padhramni' },
     calendar:   { title: 'Universal Calendar' },

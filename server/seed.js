@@ -50,7 +50,12 @@ const YAGNA_PATLA = [
 
 /* Held at the Sanand temple itself — neither count nor amount decided,
    and no date either, so it is created undated. */
-const NAVCHANDI = { name: 'Navchandi Yagna — Sanand Nij Mandir', seats: null, amount: null };
+const NAVCHANDI = {
+  name: 'Navchandi Yagna — Sanand Nij Mandir', seats: null, amount: null,
+  /* The other uncapped tiers are a deliberate "no limit"; this one is
+     genuinely undecided, and the two must not read the same. */
+  capacity_mode: 'not_decided',
+};
 
 const YAGNA_START = '2027-02-04';
 const YAGNA_END = '2027-02-08';
@@ -103,9 +108,9 @@ for (const p of POOJAS) {
   const create = db.transaction(() => {
     const info = db.prepare(`
       INSERT INTO pooja_events (category, name, description, seats_per_day, fixed_capacity,
-                                amount, target_amount, start_date, end_date)
+                                capacity_mode, amount, target_amount, start_date, end_date)
       VALUES (@category, @name, @description, @seats_per_day, 1,
-              @amount, @target_amount, @start_date, @end_date)
+              'limited', @amount, @target_amount, @start_date, @end_date)
     `).run(p);
     const id = Number(info.lastInsertRowid);
     const slot = db.prepare(`INSERT INTO pooja_slots (pooja_id, slot_date, capacity) VALUES (?, ?, ?)`);
@@ -125,13 +130,17 @@ function addYagnaPatla(p, { start, end }) {
   }
   db.transaction(() => {
     const info = db.prepare(`
-      INSERT INTO pooja_events (category, name, seats_per_day, fixed_capacity, seating_mode,
-                                amount, target_amount, start_date, end_date)
-      VALUES ('maha_yagna', @name, @seats, @fixed, 'whole', @amount, @target, @start, @end)
+      INSERT INTO pooja_events (category, name, seats_per_day, fixed_capacity, capacity_mode,
+                                seating_mode, amount, target_amount, start_date, end_date)
+      VALUES ('maha_yagna', @name, @seats, @fixed, @cap_mode, 'whole', @amount, @target, @start, @end)
     `).run({
       name: p.name,
       seats: p.seats,
       fixed: p.seats == null ? 0 : 1,
+      /* A tier with a fixed count really is capped, so it must say
+         'limited' — the label has to agree with what the slot enforces.
+         The open tiers are the trust's deliberate "no limit". */
+      cap_mode: p.capacity_mode || (p.seats == null ? 'unlimited' : 'limited'),
       amount: p.amount || 0,
       // a known count at a known rate gives a real target; otherwise none
       target: p.seats != null && p.amount != null ? p.seats * p.amount : 0,
@@ -161,13 +170,16 @@ for (const k of KATHA_ITEMS) {
   db.transaction(() => {
     const info = db.prepare(`
       INSERT INTO pooja_events (category, name, description, seats_per_day, fixed_capacity,
-                                seating_mode, amount, target_amount, start_date, end_date)
-      VALUES ('bhagvat_katha', @name, @note, @seats, @fixed, 'whole', @amount, @target, NULL, NULL)
+                                capacity_mode, seating_mode, amount, target_amount, start_date, end_date)
+      VALUES ('bhagvat_katha', @name, @note, @seats, @fixed, @cap_mode, 'whole', @amount, @target, NULL, NULL)
     `).run({
       name: k.name,
       note: k.note || null,
       seats: k.seats,
       fixed: k.seats == null ? 0 : 1,
+      /* The note is what distinguished "no limit" from "nobody has
+         decided" before there was a column for it. */
+      cap_mode: k.seats != null ? 'limited' : (k.note ? 'not_decided' : 'unlimited'),
       amount: k.amount || 0,
       target: k.seats != null && k.amount != null ? k.seats * k.amount : 0,
     });
@@ -187,9 +199,9 @@ for (const name of MANDIR_POOJAS) {
   }
   db.transaction(() => {
     const info = db.prepare(`
-      INSERT INTO pooja_events (category, name, seats_per_day, fixed_capacity,
+      INSERT INTO pooja_events (category, name, seats_per_day, fixed_capacity, capacity_mode,
                                 amount, target_amount, start_date, end_date)
-      VALUES ('mandir_pooja', ?, 1, 1, 0, 0, NULL, NULL)
+      VALUES ('mandir_pooja', ?, 1, 1, 'limited', 0, 0, NULL, NULL)
     `).run(name);
     // one undated slot — the date is announced later
     db.prepare(`INSERT INTO pooja_slots (pooja_id, slot_date, capacity) VALUES (?, NULL, 1)`)
@@ -200,3 +212,9 @@ for (const name of MANDIR_POOJAS) {
 console.log(`Mandir ni Pooja: ${added} added, ${skipped} already present (1 seat each, date & amount to be set)`);
 
 console.log('\nSeed complete.\n');
+
+/* Close the handle before the process exits. Leaving it to teardown
+   trips better-sqlite3's cleanup hook against an already-disposed
+   isolate ("Assertion failed: (env) != nullptr"), which printed a
+   native stack trace after every otherwise-successful seed. */
+db.close();

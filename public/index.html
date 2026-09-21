@@ -40,7 +40,7 @@
         <svg class="ico"><use href="/assets/icons.svg#temple"/></svg><span data-i18n="Pran Pratishtha">Pran Pratishtha</span>
       </div>
       <div class="nav-item" data-page="payments">
-        <svg class="ico"><use href="/assets/icons.svg#rupee"/></svg><span data-i18n="Payment Received">Payment Received</span>
+        <svg class="ico"><use href="/assets/icons.svg#rupee"/></svg><span data-i18n="Payments">Payments</span>
       </div>
       <div class="nav-item" data-page="invitation">
         <svg class="ico"><use href="/assets/icons.svg#mail"/></svg><span data-i18n="Invitation">Invitation</span>
@@ -177,7 +177,11 @@
 <!-- ==========================================
      SHARED MODAL  (sk's .modal-overlay pattern)
      ========================================== -->
-<div class="modal-overlay" id="sheet" role="dialog" aria-modal="true">
+<!-- A real <dialog>: the browser gives focus trapping, Esc to close and
+     top-layer stacking, which a div overlay has to fake and never quite
+     gets right. closedby="any" adds light dismiss where it is supported;
+     app.js keeps a click fallback for Safari. -->
+<dialog class="modal-overlay" id="sheet" closedby="any" aria-labelledby="sheetTitle">
   <div class="modal-box">
     <div class="modal-header">
       <div class="modal-title" id="sheetTitle">Title</div>
@@ -186,7 +190,7 @@
     <div class="modal-body" id="sheetBody"></div>
     <div class="modal-footer" id="sheetFoot"></div>
   </div>
-</div>
+</dialog>
 
 <div class="toast-container" id="toasts"></div>
 

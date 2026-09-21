@@ -69,12 +69,22 @@
               </div>
               <div class="row-end">
                 <div class="row-amount">${d.amount ? esc(money(d.amount)) : '—'}</div>
-                <button class="icon-btn" data-del="${attr(d.id)}" title="Delete"
-                        style="color:var(--ink-soft)">${icon('trash','ico-sm')}</button>
+                <div class="row-actions">
+                  <button class="icon-btn" data-edit="${attr(d.id)}" title="Edit"
+                          style="color:var(--ink-soft)">${icon('edit','ico-sm')}</button>
+                  <button class="icon-btn" data-del="${attr(d.id)}" title="Delete"
+                          style="color:var(--ink-soft)">${icon('trash','ico-sm')}</button>
+                </div>
               </div>
             </div>`).join('')}</div>`
             : UI.empty('No donations', 'Nothing recorded for this month.', 'gift')}
         </div></div>`;
+
+      body.querySelectorAll('[data-edit]').forEach((b) =>
+        b.addEventListener('click', () => {
+          const row = donations.find((x) => String(x.id) === b.getAttribute('data-edit'));
+          openForm(row);
+        }));
 
       body.querySelectorAll('[data-del]').forEach((b) =>
         b.addEventListener('click', () => {
@@ -92,39 +102,47 @@
     }
   }
 
-  async function openForm() {
-    const catField = await lookupSelect('donation_category', 'category_id', null, 'Donation Category');
+  async function openForm(existing) {
+    const d = existing || {};
+    const editing = !!d.id;
+    const catField = await lookupSelect('donation_category', 'category_id', d.category_id || null, 'Donation Category');
 
     openSheet({
-      title: 'Add Donation',
+      title: editing ? 'Edit Donation' : 'Add Donation',
       body: `
         <form id="donForm" novalidate>
           <div class="form-group"><label class="form-label req" for="f_donor_name">Donor Name</label>
-            <input class="form-input" id="f_donor_name" name="donor_name" autocomplete="name"></div>
+            <input class="form-input" id="f_donor_name" name="donor_name" autocomplete="name"
+                   value="${attr(d.donor_name || '')}" required></div>
           <div class="form-row">
             <div class="form-group"><label class="form-label" for="f_mobile">Mobile</label>
-              <input class="form-input" id="f_mobile" name="mobile" inputmode="tel"></div>
+              <input class="form-input" id="f_mobile" name="mobile" inputmode="tel" value="${attr(d.mobile || '')}"></div>
             <div class="form-group"><label class="form-label" for="f_city">City</label>
-              <input class="form-input" id="f_city" name="city"></div>
+              <input class="form-input" id="f_city" name="city" value="${attr(d.city || '')}"></div>
           </div>
           ${catField}
           <div class="form-row">
             <div class="form-group"><label class="form-label" for="f_amount">Amount</label>
-              <input class="form-input" id="f_amount" name="amount" type="number" min="0" step="1" inputmode="numeric"></div>
+              <input class="form-input" id="f_amount" name="amount" type="number" min="0" step="1"
+                     inputmode="numeric" value="${attr(d.amount ?? '')}"></div>
             <div class="form-group"><label class="form-label" for="f_donation_date">Date</label>
-              <input class="form-input" id="f_donation_date" name="donation_date" type="date" value="${attr(todayISO())}"></div>
+              <input class="form-input" id="f_donation_date" name="donation_date" type="date"
+                     value="${attr(d.donation_date || todayISO())}"></div>
           </div>
           <div class="form-group"><label class="form-label" for="f_in_kind_item">In-kind item</label>
-            <input class="form-input" id="f_in_kind_item" name="in_kind_item" placeholder="If given as goods instead of cash"></div>
+            <input class="form-input" id="f_in_kind_item" name="in_kind_item"
+                   placeholder="If given as goods instead of cash" value="${attr(d.in_kind_item || '')}"></div>
           <div class="form-group"><label class="form-label" for="f_receipt_no">Receipt No.</label>
-            <input class="form-input" id="f_receipt_no" name="receipt_no"></div>
+            <input class="form-input" id="f_receipt_no" name="receipt_no" value="${attr(d.receipt_no || '')}"></div>
+          ${editing ? '' : `
           <label class="small" style="display:flex;align-items:center;gap:.45rem;font-weight:500;margin-bottom:.6rem">
             <input type="checkbox" name="save_as_devotee" checked style="width:auto;min-height:0">
-            Also add this donor to the devotee register</label>
-          <div class="form-group"><label class="form-label" for="f_notes">Note</label><input class="form-input" id="f_notes" name="notes" data-translate></div>
+            Also add this donor to the devotee register</label>`}
+          <div class="form-group"><label class="form-label" for="f_notes">Note</label>
+            <input class="form-input" id="f_notes" name="notes" data-translate value="${attr(d.notes || '')}"></div>
         </form>`,
       footer: `<button class="btn btn-outline" data-sheet-close>Cancel</button>
-               <button class="btn btn-primary" id="donSave">Add Donation</button>`,
+               <button class="btn btn-primary" id="donSave">${editing ? 'Save changes' : 'Add Donation'}</button>`,
       onMount(sheet) {
         sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
         const form = document.getElementById('donForm');
@@ -138,8 +156,9 @@
           }
           e.currentTarget.disabled = true;
           try {
-            await API.post('/donations', data);
-            closeSheet(); toast('Donation recorded', 'ok'); refreshPage();
+            if (editing) await API.put('/donations/' + d.id, data);
+            else await API.post('/donations', data);
+            closeSheet(); toast(editing ? 'Donation updated' : 'Donation recorded', 'ok'); refreshPage();
           } catch (err) {
             e.currentTarget.disabled = false;
             toast(err.message, 'err');

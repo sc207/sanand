@@ -32,7 +32,11 @@ const Database = require('better-sqlite3');
 const DATA_DIR = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const db = new Database(path.join(DATA_DIR, 'temple.db'));
+/* The mandir always runs the default file. TEMPLE_DB exists so a test
+   run can be pointed at a throwaway database instead of the live one —
+   several checks assert whole-database totals, which only hold on a
+   fresh schema. */
+const db = new Database(process.env.TEMPLE_DB || path.join(DATA_DIR, 'temple.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
@@ -73,6 +77,12 @@ CREATE TABLE IF NOT EXISTS pooja_events (
   -- available on the temple floor. NULL = no fixed limit.
   seats_per_day  INTEGER,
   fixed_capacity INTEGER NOT NULL DEFAULT 1,   -- 0 = open/unlimited seating
+  -- REGISTRATION capacity, which is not the same question as the patla
+  -- count above: not_decided | limited | unlimited. 'not_decided' and
+  -- 'unlimited' both leave slot capacity NULL and both take sevarthi —
+  -- the difference is only what the trust has actually decided, and the
+  -- UI must not claim "unlimited" when nobody has said so.
+  capacity_mode  TEXT NOT NULL DEFAULT 'not_decided',
   -- per_day: the count applies to each day | whole: it is the total
   seating_mode   TEXT NOT NULL DEFAULT 'per_day',
   amount         REAL NOT NULL DEFAULT 0,      -- suggested contribution per sevarthi seat
@@ -283,6 +293,51 @@ const poojaCols = db.prepare(`PRAGMA table_info(pooja_events)`).all().map((c) =>
 if (!poojaCols.includes('seating_mode')) {
   db.exec(`ALTER TABLE pooja_events ADD COLUMN seating_mode TEXT NOT NULL DEFAULT 'per_day'`);
   console.log('[db] migration 2: added seating_mode (per_day | whole)');
+}
+
+/* ------------------------------------------------------------
+   MIGRATION 3 — registration capacity becomes a real three-way
+   choice instead of something inferred from a NULL.
+
+     not_decided  the trust has not decided whether or how many
+                  registrations to take. Registrations ARE allowed.
+     limited      a known maximum; slot capacity enforces it.
+     unlimited    deliberately no cap.
+
+   'not_decided' and 'unlimited' are both stored as slot capacity
+   NULL and behave identically — only the wording differs, and the
+   app must never announce "unlimited" on the trust's behalf.
+
+   Backfill is deliberately conservative: anything that already has
+   a patla count is 'limited'; everything else becomes
+   'not_decided', because nothing in the data says which of the
+   uncapped poojas were a deliberate "no limit". The operator marks
+   those Unlimited from the seva form. A wrong label here changes
+   wording only — never whether someone can register.
+   ------------------------------------------------------------ */
+if (!poojaCols.includes('capacity_mode')) {
+  db.transaction(() => {
+    db.exec(`ALTER TABLE pooja_events ADD COLUMN capacity_mode TEXT NOT NULL DEFAULT 'not_decided'`);
+    db.exec(`UPDATE pooja_events SET capacity_mode = 'limited'
+              WHERE fixed_capacity = 1 AND seats_per_day IS NOT NULL`);
+  })();
+  console.log('[db] migration 3: added capacity_mode (not_decided | limited | unlimited)');
+}
+
+/* Invariant repair, checked every boot: a pooja whose slots carry a
+   number IS capped, whatever its label says, so the label must read
+   'limited'. Anything else would have the screen announce "capacity not
+   decided" while the booking transaction turns people away. This cannot
+   undo an operator's choice — clearing a limit through the API also
+   clears fixed_capacity and the slot numbers, so such a row never
+   matches here. It catches rows written by a direct INSERT, which is
+   how the seed scripts load the real seva list. */
+const capacityDrift = db.prepare(`
+  UPDATE pooja_events SET capacity_mode = 'limited'
+   WHERE capacity_mode <> 'limited' AND fixed_capacity = 1 AND seats_per_day IS NOT NULL
+`).run();
+if (capacityDrift.changes > 0) {
+  console.log(`[db] capacity_mode repaired on ${capacityDrift.changes} pooja(s) with a real patla limit`);
 }
 
 /* ---- first-run defaults ------------------------------------ */

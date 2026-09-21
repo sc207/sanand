@@ -79,6 +79,49 @@ router.post('/', (req, res) => {
   res.status(201).json(row);
 });
 
+/** Correct a donation that was entered wrong — the whole row, because a
+    mistyped amount, donor or date is exactly what needs fixing and
+    delete-and-retype loses the receipt number and the audit trail. */
+router.put('/:id', (req, res) => {
+  const row = db.prepare(`SELECT * FROM donations WHERE id = ?`).get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  const b = req.body;
+
+  const donorName = String(b.donor_name ?? row.donor_name).trim();
+  if (!donorName) return res.status(400).json({ error: 'Donor name is required' });
+  const amount = Number(b.amount ?? row.amount);
+  const inKind = ((b.in_kind_item ?? row.in_kind_item) || '').trim() || null;
+  if (!amount && !inKind) {
+    return res.status(400).json({ error: 'Enter an amount, or describe the in-kind item' });
+  }
+
+  db.prepare(`
+    UPDATE donations SET donor_name=@donor_name, mobile=@mobile, category_id=@category_id,
+           amount=@amount, in_kind_item=@in_kind_item, donation_date=@donation_date,
+           receipt_no=@receipt_no, notes=@notes
+     WHERE id=@id
+  `).run({
+    id: row.id,
+    donor_name: donorName,
+    mobile: ((b.mobile ?? row.mobile) || '').trim() || null,
+    category_id: b.category_id ?? row.category_id,
+    amount,
+    in_kind_item: inKind,
+    donation_date: b.donation_date || row.donation_date,
+    receipt_no: ((b.receipt_no ?? row.receipt_no) || '').trim() || null,
+    notes: ((b.notes ?? row.notes) || '').trim() || null,
+  });
+
+  const updated = db.prepare(SELECT + ` WHERE dn.id = ?`).get(row.id);
+  log(req, {
+    action: 'update', entity: 'donation', entityId: row.id,
+    summary: `Updated donation from ${updated.donor_name}` +
+             (row.amount !== amount ? ` (₹${row.amount} → ₹${amount})` : ''),
+    details: { before: row, after: updated },
+  });
+  res.json(updated);
+});
+
 router.delete('/:id', (req, res) => {
   const row = db.prepare(`SELECT * FROM donations WHERE id = ?`).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });

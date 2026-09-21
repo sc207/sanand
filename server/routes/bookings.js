@@ -31,7 +31,16 @@ const BOOKING_SELECT = `
   SELECT b.*, ps.slot_date, ps.pooja_id, pe.name AS pooja_name, pe.category, pe.amount AS suggested_amount,
          d.full_name, d.mobile, d.city, d.state, d.mul_vatan,
          s.value AS samaj, c.value AS category_name,
-         (SELECT IFNULL(SUM(amount),0) FROM payments WHERE booking_id = b.id) AS amount_paid
+         (SELECT IFNULL(SUM(amount),0) FROM payments WHERE booking_id = b.id) AS amount_paid,
+         (SELECT IFNULL(SUM(amount),0) FROM payments
+           WHERE booking_id = b.id AND payer_type = 'bhuvaji')  AS bappa_paid,
+         (SELECT IFNULL(SUM(amount),0) FROM payments
+           WHERE booking_id = b.id AND payer_type <> 'bhuvaji') AS devotee_paid,
+         /* When money last actually arrived, as distinct from the seva's
+            own date — a collections list has to show when the entry
+            happened, not only which day the pooja falls on. */
+         (SELECT MAX(payment_date) FROM payments WHERE booking_id = b.id) AS last_payment_date,
+         (SELECT COUNT(*) FROM payments WHERE booking_id = b.id)          AS payment_count
     FROM sevarthi_bookings b
     JOIN pooja_slots  ps ON ps.id = b.slot_id
     JOIN pooja_events pe ON pe.id = ps.pooja_id
@@ -84,7 +93,7 @@ router.post('/', (req, res) => {
 
     let devoteeId = b.devotee_id;
     if (!devoteeId) {
-      const r = upsertDevotee(req, b.devotee || b);
+      const r = upsertDevotee(req, b.devotee || b, { requireMobile: true });
       devoteeId = r.id;
     }
 

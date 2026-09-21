@@ -56,8 +56,13 @@
 
       const legend = Object.keys(TYPE_META).map((type) => {
         const m = TYPE_META[type];
+        /* The dot is coloured from TYPE_META, not from a .cal-ev-<type>
+           class: styles.css only defines those for the original
+           portal's event types, so 'payment' came out with no dot at
+           all. Driving it from the same data the chips use keeps the
+           legend and the calendar in agreement whatever types exist. */
         return `<button class="cal-legend-btn ${state.filters[type] ? 'on' : 'off'}" data-filter="${attr(type)}">
-          <span class="cal-legend-dot cal-ev-${attr(type)}"></span>${esc(m.key)}</button>`;
+          <span class="cal-legend-dot" style="background:${attr(m.color)}"></span>${esc(m.key)}</button>`;
       }).join('');
 
       const upNext = entries.filter((e) => e.date >= today).slice(0, 6);
@@ -90,9 +95,9 @@
           <p class="mg-page-sub">Poojas, padhramni, donations and payments — all in one place</p>
         </div>
         <div class="flex gap-2 items-center">
-          <button class="btn btn-outline mg-btn-xs" data-nav="-1">&larr; Back</button>
+          <button class="icon-btn" data-nav="-1" aria-label="Previous month">${icon('chevron-left','ico-sm')}</button>
           <strong class="mg-cal-label">${esc(MONTHS[mo])} ${esc(y)}</strong>
-          <button class="btn btn-outline mg-btn-xs" data-nav="1">Next &rarr;</button>
+          <button class="icon-btn" data-nav="1" aria-label="Next month">${icon('chevron-right','ico-sm')}</button>
         </div>
       </div>
 

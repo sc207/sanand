@@ -1,153 +1,256 @@
-/* Payment Received — day-wise and month-wise money in. */
+/* ============================================================
+   PAYMENTS — the collections workbench
+   ------------------------------------------------------------
+   One view, because the operator has one job here: find who still
+   owes and act on it. Every sevarthi with their contribution, what
+   they have paid, what Bapa covered and what is outstanding,
+   filterable by state, with the actions that follow from a row
+   (collect, Bapa support, ledger, edit, devotee) on the row itself.
+
+   This page used to be a month-by-day cash book, and then that book
+   as a second tab. Both are gone: the filters below reach the same
+   payments, the Universal Calendar already shows each day's takings,
+   and the dashboard carries the daily and monthly totals. The one
+   thing only the cash book could do — correct or remove a payment
+   entry — moved into the per-sevarthi ledger (Forms.bookingLedger),
+   which is on every row, so nothing was lost with it.
+   ============================================================ */
 (function (global) {
   'use strict';
-  const { esc, attr, money, num, icon, fmtDate, fmtDateLong, monthISO, todayISO,
-          debounce, statusBadge, MONTHS } = UI;
+  const { esc, attr, money, num, icon, fmtDate, debounce } = UI;
 
-  const state = { month: monthISO(), date: null, search: '' };
+  const state = {
+    filter: 'due',                         // see FILTERS
+    search: '',
+    page: 1,
+    bookings: [],
+  };
+
+  /* Status is the booking's own; the other three are derived from the
+     ledger (UI.coverage), which is why they are filters and not
+     statuses — the same distinction the trust drew. */
+  const FILTERS = [
+    ['due', 'Still to collect'],
+    ['all', 'All'],
+    ['pending', 'Pending'],
+    ['partial', 'Partial'],
+    ['covered', 'Covered'],
+    ['bappa', 'Bappa supported'],
+    ['excess', 'Excess'],
+  ];
+
+  function matches(b, key) {
+    if (b.status === 'cancelled') return key === 'all';
+    const c = UI.coverage(b);
+    switch (key) {
+      case 'all': return true;
+      case 'due': return c.outstanding > 0;
+      case 'pending': return b.status === 'pending';
+      case 'partial': return b.status === 'partially_paid';
+      case 'covered': return c.outstanding === 0;
+      case 'bappa': return c.bappa_supported;
+      case 'excess': return c.excess > 0;
+      default: return true;
+    }
+  }
+
+  /* One figure as a labelled cell. Run together on a single line
+     ("Contribution ₹21,00,000 Paid ₹10,00,000 Outstanding ₹11,00,000")
+     it was a wall of digits with no column to scan down the list. */
+  const fig = (k, v, cls) => `<div class="fig ${cls || ''}">
+    <span class="fig-k">${esc(k)}</span><span class="fig-v">${esc(money(v))}</span></div>`;
 
   async function render(host) {
     host.innerHTML = `
       <div class="flex justify-between items-center mg-page-head">
         <div>
-          <h1 class="banner-title mg-page-title">Payment Received</h1>
-          <p class="mg-page-sub">Every rupee received, day by day</p>
+          <h1 class="banner-title mg-page-title">Payments</h1>
+          <p class="mg-page-sub">Who still owes, and what to do about it</p>
         </div>
         <button class="btn btn-primary mg-btn-xs" data-add>${icon('plus','ico-sm')} Payment</button>
       </div>
 
-      <div class="card"><div class="card-body" style="padding:.7rem .8rem">
-        <div class="cal-head" style="margin:0">
-          <button class="icon-btn" data-nav="-1" aria-label="Previous month" style="color:var(--ink-soft)">
-            ${icon('chevron-left','ico-sm')}</button>
-          <span class="cal-month" id="payMonth"></span>
-          <button class="icon-btn" data-nav="1" aria-label="Next month" style="color:var(--ink-soft)">
-            ${icon('chevron-right','ico-sm')}</button>
-        </div>
-      </div></div>
-
-      <div id="paySummary"></div>
-
-      <div class="search-bar">${icon('search')}
-        <input class="form-input" id="payFilter" placeholder="Filter by name, mobile, samaj, receipt…"
-               value="${attr(state.search)}" autocomplete="off"></div>
-
-      <div id="payBody">${UI.loading(3)}</div>`;
+      <div id="payView"></div>`;
 
     host.querySelector('[data-add]').addEventListener('click', () => Forms.addPayment());
-    host.querySelectorAll('[data-nav]').forEach((b) =>
-      b.addEventListener('click', () => {
-        const [y, m] = state.month.split('-').map(Number);
-        const d = new Date(y, m - 1 + Number(b.getAttribute('data-nav')), 1);
-        state.month = d.toLocaleDateString('en-CA').slice(0, 7);
-        state.date = null;
-        load();
-      }));
-    host.querySelector('#payFilter').addEventListener('input',
-      debounce((e) => { state.search = e.target.value.trim(); load(); }, 280));
-
-    await load();
+    await renderCollect(document.getElementById('payView'));
   }
 
-  async function load() {
-    const [y, m] = state.month.split('-').map(Number);
-    document.getElementById('payMonth').textContent = `${MONTHS[m - 1]} ${y}`;
+  async function renderCollect(host) {
+    host.innerHTML = `
+      <div id="collectSummary"></div>
+      <div class="btn-row" style="margin:1rem 0">
+        ${FILTERS.map(([k, label]) =>
+          `<button type="button" class="btn mg-btn-xs ${state.filter === k ? 'btn-primary' : 'btn-outline'}"
+                   data-filter="${attr(k)}">${esc(label)}</button>`).join('')}
+      </div>
+      <div class="search-bar">${icon('search')}
+        <input class="form-input" id="collectSearch" placeholder="Search sevarthi, mobile, samaj, seva…"
+               value="${attr(state.search)}" autocomplete="off"></div>
+      <div id="collectBody">${UI.loading(4)}</div>`;
 
-    const body = document.getElementById('payBody');
-    const summary = document.getElementById('paySummary');
-    body.innerHTML = UI.loading(3);
+    host.querySelectorAll('[data-filter]').forEach((b) =>
+      b.addEventListener('click', () => {
+        state.filter = b.getAttribute('data-filter');
+        state.page = 1;                     // a new filter starts at its own first page
+        renderCollect(host);
+      }));
+    host.querySelector('#collectSearch').addEventListener('input',
+      debounce((e) => { state.search = e.target.value.trim(); state.page = 1; loadCollect(); }, 280));
+
+    await loadCollect();
+  }
+
+  async function loadCollect() {
+    const body = document.getElementById('collectBody');
+    const summary = document.getElementById('collectSummary');
+    if (!body) return;
+    body.innerHTML = UI.loading(4);
 
     try {
-      const [byDay, list] = await Promise.all([
-        API.paymentsByDay(state.month),
-        API.payments({ month: state.date ? undefined : state.month, date: state.date, search: state.search }),
-      ]);
+      state.bookings = await API.bookings({ search: state.search || undefined });
+      const live = state.bookings.filter((b) => b.status !== 'cancelled');
 
-      const monthTotal = byDay.reduce((a, d) => a + d.total, 0);
-      const bhuvajiTotal = byDay.reduce((a, d) => a + d.bhuvaji_total, 0);
+      /* Totals are for everything live, not just the current filter —
+         the operator wants the size of the job, then narrows to work
+         through it. Summed per booking, never netted. */
+      const t = live.reduce((a, b) => {
+        const c = UI.coverage(b);
+        a.committed += c.committed; a.covered += c.covered;
+        a.bappa += c.bappa_paid; a.outstanding += c.outstanding; a.excess += c.excess;
+        if (c.outstanding > 0) a.owing++;
+        return a;
+      }, { committed: 0, covered: 0, bappa: 0, outstanding: 0, excess: 0, owing: 0 });
 
       summary.innerHTML = `
         <div class="stats-grid">
-          <div class="stat"><div class="stat-card-title">This month</div>
-            <div class="stat-card-value">${esc(money(monthTotal))}</div>
-            <div class="mg-muted-xs">${esc(num(byDay.reduce((a, d) => a + d.entries, 0)))} entries</div></div>
-          <div class="stat"><div class="stat-card-title">Bapa's share</div>
-            <div class="stat-card-value">${esc(money(bhuvajiTotal))}</div>
-            <div class="mg-muted-xs">of this month</div></div>
+          <div class="stat"><div class="stat-text">
+            <div class="stat-card-title">Still to collect</div>
+            <div class="stat-card-value" style="color:var(--warning)">${esc(money(t.outstanding))}</div>
+            <div class="mg-muted-xs">from ${esc(num(t.owing))} sevarthi</div></div>
+            <span class="stat-ico due">${icon('clock')}</span></div>
+          <div class="stat"><div class="stat-text">
+            <div class="stat-card-title">Covered</div>
+            <div class="stat-card-value">${esc(money(t.covered))}</div>
+            <div class="mg-muted-xs">of ${esc(money(t.committed))} committed</div></div>
+            <span class="stat-ico grace">${icon('wallet')}</span></div>
+          <div class="stat"><div class="stat-text">
+            <div class="stat-card-title">Bapa's support</div>
+            <div class="stat-card-value">${esc(money(t.bappa))}</div>
+            <div class="mg-muted-xs">included in covered</div></div>
+            <span class="stat-ico people">${icon('diya')}</span></div>
+          <div class="stat"><div class="stat-text">
+            <div class="stat-card-title">Excess</div>
+            <div class="stat-card-value">${esc(money(t.excess))}</div>
+            <div class="mg-muted-xs">given above commitment</div></div>
+            <span class="stat-ico rupee">${icon('trending-up')}</span></div>
         </div>`;
 
-      const dayList = byDay.length ? `
+      const rows = state.bookings.filter((b) => matches(b, state.filter));
+      if (!rows.length) {
+        body.innerHTML = UI.empty(
+          state.filter === 'due' ? 'Nothing outstanding' : 'Nothing here',
+          state.search ? 'No sevarthi matches that search.' : 'No sevarthi in this state.', 'rupee');
+        return;
+      }
+
+      /* A Mahotsav runs to hundreds of sevarthi; one endless list is
+         neither scannable nor quick to paint. UI.paginate clamps the
+         page for us when a filter change leaves it past the end. */
+      const pg = UI.paginate(rows, state.page);
+      state.page = pg.page;
+      const shown = pg.slice;
+
+      body.innerHTML = `
         <div class="card">
-          <div class="card-header"><h2>Day-wise</h2>
-            ${state.date ? `<button class="btn btn-outline mg-btn-xs" data-clear-day>Show whole month</button>` : ''}
-          </div>
+          <div class="card-header"><h2>${esc(num(rows.length))} sevarthi</h2>
+            <span class="small muted">${esc((FILTERS.find((f) => f[0] === state.filter) || [])[1] || '')}</span></div>
           <div class="card-body" style="padding:0"><div class="list">
-            ${byDay.map((d) => `
-              <button class="row-item ${state.date === d.payment_date ? 'is-active' : ''}"
-                      data-day="${attr(d.payment_date)}"
-                      style="${state.date === d.payment_date ? 'background:var(--ivory)' : ''}">
-                <div class="row-main">
-                  <div class="row-title">${esc(fmtDateLong(d.payment_date))}</div>
-                  <div class="row-sub">${esc(num(d.entries))} payment${d.entries === 1 ? '' : 's'}
-                    ${d.bhuvaji_total ? ' · Bapa ' + esc(money(d.bhuvaji_total)) : ''}</div>
-                </div>
-                <div class="row-end"><div class="row-amount">${esc(money(d.total))}</div></div>
-              </button>`).join('')}
-          </div></div>
-        </div>` : '';
+            ${shown.map((b) => {
+              const c = UI.coverage(b);
 
-      const rows = list.payments;
-      const entries = `
-        <div class="card">
-          <div class="card-header">
-            <h2>${state.date ? esc(fmtDateLong(state.date)) : 'All entries this month'}</h2>
-            <span class="badge">${esc(money(list.totals.total))}</span>
-          </div>
-          <div class="card-body" style="padding:0">
-            ${rows.length ? `<div class="list">${rows.map((p) => `
-              <div class="row-item" style="cursor:default">
+              /* Collapsed: the four things a collector needs to decide
+                 whether to ring this person — who, their state, the
+                 number to ring, and what is owed — plus the one button
+                 that follows. Everything else is one tap down. */
+              const summary = `
                 <div class="row-main">
-                  <div class="row-title">${esc(p.full_name)}
-                    ${p.payer_type === 'bhuvaji' ? '<span class="badge badge-gold">Bapa</span>' : ''}</div>
-                  <div class="row-sub">${esc(p.pooja_name)} · ${esc(fmtDate(p.slot_date))}
-                    ${p.receipt_no ? ' · #' + esc(p.receipt_no) : ''}</div>
-                  <div class="row-sub">${esc(fmtDate(p.payment_date))}
-                    ${p.samaj ? ' · ' + esc(p.samaj) : ''} · by ${esc(p.recorded_by || '—')}</div>
+                  <div class="row-title">${esc(b.full_name)} ${UI.coverageBadges(b)}</div>
+                  <div class="collect-meta">
+                    ${b.mobile ? `<span class="is-phone">${icon('phone','ico-sm')} ${esc(b.mobile)}</span>`
+                               : `<span class="is-missing">${icon('alert','ico-sm')} No mobile</span>`}
+                  </div>
                 </div>
-                <div class="row-end">
-                  <div class="row-amount">${esc(money(p.amount))}</div>
-                  <button class="icon-btn" data-del="${attr(p.id)}" title="Remove entry"
-                          style="color:var(--ink-soft)">${icon('trash','ico-sm')}</button>
+                <div class="row-end collect-lead">
+                  <div class="lead-fig ${c.outstanding > 0 ? 'is-due' : c.excess > 0 ? 'is-extra' : 'is-ok'}">
+                    <span class="lead-k">${c.outstanding > 0 ? 'Outstanding' : c.excess > 0 ? 'Excess' : 'Covered'}</span>
+                    <span class="lead-v">${esc(money(c.outstanding > 0 ? c.outstanding
+                      : c.excess > 0 ? c.excess : c.committed))}</span>
+                  </div>
+                  ${b.status !== 'cancelled' && c.outstanding > 0
+                    ? `<button class="btn btn-primary mg-btn-xs" data-collect="${attr(b.id)}">Collect</button>` : ''}
+                </div>`;
+
+              const detail = `
+                <div class="collect-meta">
+                  <span>${esc(b.pooja_name)}</span>
+                  <span>Seva ${esc(fmtDate(b.slot_date))}</span>
+                  ${b.samaj ? `<span>${esc(b.samaj)}</span>` : ''}
                 </div>
-              </div>`).join('')}</div>`
-            : UI.empty('No payments', state.search ? 'No match for that search.' : 'Nothing recorded for this period.', 'rupee')}
-          </div>
+                <div class="fig-band">
+                  ${fig('Contribution', c.committed)}
+                  ${fig('Paid', c.devotee_paid)}
+                  ${c.bappa_paid ? fig("Bapa's support", c.bappa_paid, 'is-bapa') : ''}
+                  ${c.outstanding > 0 ? fig('Outstanding', c.outstanding, 'is-due')
+                    : c.excess > 0 ? fig('Excess', c.excess, 'is-extra')
+                    : `<div class="fig is-ok"><span class="fig-k">Status</span>
+                         <span class="fig-v">Fully covered</span></div>`}
+                </div>
+                <div class="collect-when">
+                  ${icon('clock','ico-sm')}
+                  <span>Registered ${esc(fmtDate(String(b.created_at || '').slice(0, 10)))}</span>
+                  <span>${b.last_payment_date
+                    ? `Last paid ${esc(fmtDate(b.last_payment_date))}` +
+                      (b.payment_count > 1 ? ` · ${esc(num(b.payment_count))} entries` : '')
+                    : 'No payment yet'}</span>
+                </div>
+                <div class="more-actions">
+                  ${b.status !== 'cancelled' && c.outstanding > 0
+                    ? `<button class="btn btn-outline mg-btn-xs" data-bapa="${attr(b.id)}">Bapa support</button>` : ''}
+                  <button class="btn btn-outline mg-btn-xs" data-ledger="${attr(b.id)}">
+                    ${icon('history','ico-sm')} Ledger</button>
+                  ${b.status !== 'cancelled' ? `<button class="btn btn-outline mg-btn-xs" data-editb="${attr(b.id)}">
+                    ${icon('edit','ico-sm')} Edit registration</button>` : ''}
+                  <button class="btn btn-outline mg-btn-xs" data-dev="${attr(b.devotee_id)}">
+                    ${icon('users','ico-sm')} Devotee</button>
+                </div>`;
+
+              return UI.expandableRow(summary, detail,
+                { itemClass: 'collect-row', label: 'Seva, split and dates' });
+            }).join('')}
+          </div></div>
+          ${UI.pager(pg, 'sevarthi')}
         </div>`;
 
-      body.innerHTML = dayList + entries;
+      UI.bindExpanders(body);
+      UI.bindPager(body, (d) => {
+        state.page = pg.page + d;
+        loadCollect().then(() => {
+          const top = document.getElementById('collectBody');
+          if (top) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
 
-      body.querySelectorAll('[data-day]').forEach((b) =>
-        b.addEventListener('click', () => {
-          const d = b.getAttribute('data-day');
-          state.date = state.date === d ? null : d;
-          load();
-        }));
-      const clear = body.querySelector('[data-clear-day]');
-      if (clear) clear.addEventListener('click', () => { state.date = null; load(); });
-
-      body.querySelectorAll('[data-del]').forEach((b) =>
-        b.addEventListener('click', () => {
-          UI.confirmSheet({
-            title: 'Remove this payment?',
-            message: 'The entry will be deleted and the sevarthi status recalculated. This is recorded in the audit trail.',
-            confirmLabel: 'Remove', danger: true,
-            onConfirm: async () => {
-              await API.del('/payments/' + b.getAttribute('data-del'));
-              UI.toast('Payment entry removed', 'ok');
-              load();
-            },
-          });
-        }));
+      body.querySelectorAll('[data-collect]').forEach((el) =>
+        el.addEventListener('click', () => Forms.paymentForm(el.getAttribute('data-collect'))));
+      body.querySelectorAll('[data-bapa]').forEach((el) =>
+        el.addEventListener('click', () => Forms.paymentForm(el.getAttribute('data-bapa'), { payer_type: 'bhuvaji' })));
+      body.querySelectorAll('[data-ledger]').forEach((el) =>
+        el.addEventListener('click', () => Forms.bookingLedger(el.getAttribute('data-ledger'), loadCollect)));
+      body.querySelectorAll('[data-editb]').forEach((el) =>
+        el.addEventListener('click', () => Forms.editBooking(el.getAttribute('data-editb'))));
+      body.querySelectorAll('[data-dev]').forEach((el) =>
+        el.addEventListener('click', () => Pages.devotees.openProfile(el.getAttribute('data-dev'))));
     } catch (e) {
       body.innerHTML = UI.errorState(e.message);
     }

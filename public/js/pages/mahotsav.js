@@ -11,6 +11,47 @@
     bhagvat_katha: 'Bhagvat Saptah — Katha',
   };
 
+  /* Every page you can go *into* gets an explicit way back, sitting
+     above the title alongside the trail. The trail says where you are
+     (the names alone — "Anya Mukhya Patla" — don't say which category
+     they belong to); the button is the one-tap way out, which is what
+     an operator reaches for rather than the browser chrome. Back goes
+     to the nearest ancestor with a target, so it works at any depth. */
+  function crumbs(trail) {
+    const parent = [...trail].reverse().find((c) => c.to);
+    return `<div class="crumb-bar">
+      ${parent ? `<button type="button" class="btn btn-outline mg-btn-xs crumb-back" data-crumb="${attr(parent.to)}">
+        ${icon('chevron-left', 'ico-sm')} Back</button>` : ''}
+      <nav class="crumbs" aria-label="Breadcrumb">${trail.map((c, i) => {
+        const last = i === trail.length - 1;
+        const sep = i ? '<span class="crumb-sep" aria-hidden="true">/</span>' : '';
+        return sep + (last || !c.to
+          ? `<span class="crumb-current"${last ? ' aria-current="page"' : ''}>${esc(c.label)}</span>`
+          : `<button type="button" data-crumb="${attr(c.to)}">${esc(c.label)}</button>`);
+      }).join('')}</nav>
+    </div>`;
+  }
+
+  function bindCrumbs(host) {
+    host.querySelectorAll('[data-crumb]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const to = b.getAttribute('data-crumb');
+        navigate.apply(null, to.split('/'));
+      }));
+  }
+
+  /* "Not decided" and "unlimited" both take sevarthi without limit, but
+     the app must not claim the trust chose unlimited when it simply has
+     not decided — so they read differently even though they behave the
+     same. Only 'limited' ever shows an x / y. */
+  function capacityText(p) {
+    if (p.capacity_mode === 'limited' && p.total_seats !== null) {
+      return `${num(p.booked_seats)} / ${num(p.total_seats)} registered`;
+    }
+    const n = `${num(p.booked_seats)} registered`;
+    return p.capacity_mode === 'unlimited' ? `${n} · unlimited` : `${n} · capacity not decided`;
+  }
+
   async function render(host, params) {
     const [a, b] = params || [];
     if (a === 'pooja' && b) return renderPooja(host, b);
@@ -30,9 +71,11 @@
         <button class="btn btn-primary mg-btn-xs" data-add-sevarthi>${icon('plus','ico-sm')} Sevarthi</button>
       </div>
 
+      <div class="seva-grid">
       ${cats.map((c) => {
         const seatText = c.seats_left === null
-          ? `${num(c.booked_seats)} sevarthi joined · open seating`
+          ? `${num(c.booked_seats)} registered` +
+            (c.not_decided_count ? ` · ${num(c.not_decided_count)} awaiting a capacity decision` : ' · open seating')
           : `${num(c.booked_seats)} of ${num(c.total_seats)} patla booked · ${num(c.seats_left)} still open`;
         return `
         <button class="card cat-card" data-cat="${attr(c.key)}">
@@ -51,10 +94,12 @@
               <span>${esc(money(c.received))} received</span>
               <span>${c.target_amount ? 'target ' + esc(money(c.target_amount)) : ''}</span>
             </div>
-            ${progressBar(c.received, c.target_amount || c.received || 1, true)}
+            ${/* Same rule as the dashboard: no target, no bar. */
+              c.target_amount > 0 ? progressBar(c.received, c.target_amount, true) : ''}
           </div>
         </button>`;
-      }).join('')}`;
+      }).join('')}
+      </div>`;
 
     host.querySelector('[data-add-sevarthi]').addEventListener('click', () => Forms.addSevarthi());
     host.querySelectorAll('[data-cat]').forEach((el) =>
@@ -67,6 +112,12 @@
   // is already fetched in full), so switching direction is instant.
   const catSort = { dir: 'desc' };
 
+  /* Which page of a pooja's sevarthi ledger is showing. Reset whenever
+     a different pooja is opened, or page 3 of a long yagna would carry
+     over to a pooja with four sevarthi. */
+  let ledgerPage = 1;
+  let ledgerPoojaId = null;
+
   async function renderCategory(host, category) {
     const poojas = await API.poojas(category);
     paint();
@@ -77,8 +128,8 @@
                                 : a.amount - b.amount || a.name.localeCompare(b.name));
 
       host.innerHTML = `
-        <button class="btn btn-outline mg-btn-xs" data-back>${icon('chevron-left','ico-sm')} Mahotsav</button>
-        <div class="flex justify-between items-center mg-page-head" style="margin-top:.4rem">
+        ${crumbs([{ label: 'Mahotsav', to: 'mahotsav' }, { label: CAT_LABEL[category] }])}
+        <div class="flex justify-between items-center mg-page-head">
           <div>
             <h1 class="banner-title mg-page-title">${esc(CAT_LABEL[category])}</h1>
             <p class="mg-page-sub">${poojas.length} pooja${poojas.length === 1 ? '' : 's'} in this seva</p>
@@ -86,34 +137,31 @@
           <button class="btn btn-primary mg-btn-xs" data-new-pooja>${icon('plus','ico-sm')} New</button>
         </div>
 
-        <div class="btn-row" style="margin-bottom:1rem">
+        <div class="sort-row">
+          <span class="sort-label">Sort:</span>
           <button type="button" class="btn ${catSort.dir === 'desc' ? 'btn-primary' : 'btn-outline'} mg-btn-xs" data-sort="desc">Highest amount first</button>
           <button type="button" class="btn ${catSort.dir === 'asc' ? 'btn-primary' : 'btn-outline'} mg-btn-xs" data-sort="asc">Lowest amount first</button>
         </div>
 
-        ${sorted.length ? sorted.map((p) => `
+        ${sorted.length ? `<div class="seva-grid">${sorted.map((p) => `
           <button class="card cat-card" data-pooja="${attr(p.id)}">
             <div class="card-body">
-              <div style="display:flex;justify-content:space-between;gap:.6rem">
-                <div style="min-width:0">
-                  <div class="item-name">${esc(p.name)}</div>
-                  <div class="cat-meta">${p.start_date ? esc(fmtRange(p.start_date, p.end_date)) + ' · ' + esc(p.day_count) + ' day' + (p.day_count === 1 ? '' : 's') : esc(TBD)}
-                    ${p.amount ? ' · ' + esc(money(p.amount)) + ' per sevarthi' : ''}</div>
-                </div>
-                ${p.is_full ? '<span class="badge badge-cancelled">Full</span>' : statusBadge(p.status)}
+              <div class="seva-head">
+                <span class="item-name">${esc(p.name)}</span>
+                ${icon('chevron-right','ico-sm')}
               </div>
-              <div class="progress-row" style="margin-top:.6rem">
-                <span>${p.total_seats === null
-                  ? esc(num(p.booked_seats)) + ' joined'
-                  : esc(num(p.booked_seats) + ' / ' + num(p.total_seats)) + ' patla'}</span>
-                <span>${esc(money(p.received))}${p.target_amount ? ' of ' + esc(money(p.target_amount)) : ''}</span>
-              </div>
+              <div class="seva-card-meta">${p.start_date
+                ? esc(fmtRange(p.start_date, p.end_date)) + ' · ' + esc(p.day_count) + ' day' + (p.day_count === 1 ? '' : 's')
+                : esc(TBD)}${p.amount ? ' · ' + esc(money(p.amount)) + ' per sevarthi' : ''}</div>
+              <div class="seva-card-state ${p.is_full ? 'is-full' : ''}">${p.is_full
+                ? 'Full · ' + esc(capacityText(p))
+                : esc(p.status === 'closed' ? 'Closed' : 'Open') + ' · ' + esc(capacityText(p))}</div>
               ${progressBar(p.booked_seats, p.total_seats)}
             </div>
-          </button>`).join('')
+          </button>`).join('')}</div>`
           : UI.empty('No pooja added yet', 'Add the first one to start taking sevarthi.', 'temple')}`;
 
-      host.querySelector('[data-back]').addEventListener('click', () => navigate('mahotsav'));
+      bindCrumbs(host);
       host.querySelector('[data-new-pooja]').addEventListener('click', () => poojaForm(category));
       host.querySelectorAll('[data-sort]').forEach((b) =>
         b.addEventListener('click', () => { catSort.dir = b.getAttribute('data-sort'); paint(); }));
@@ -124,13 +172,19 @@
 
   /* ---------- level 3: one pooja — seating + ledger ---------- */
   async function renderPooja(host, id) {
+    if (String(ledgerPoojaId) !== String(id)) { ledgerPage = 1; ledgerPoojaId = id; }
     const p = await API.pooja(id);
     const received = p.received || 0;
     const whole = p.seating_mode === 'whole';
+    const ledgerPg = UI.paginate(p.ledger, ledgerPage);
 
     host.innerHTML = `
-      <button class="btn btn-outline mg-btn-xs" data-back>${icon('chevron-left','ico-sm')} ${esc(p.category_label || 'Back')}</button>
-      <div class="flex justify-between items-center mg-page-head" style="margin-top:.4rem">
+      ${crumbs([
+        { label: 'Mahotsav', to: 'mahotsav' },
+        { label: p.category_label || 'Seva', to: 'mahotsav/' + p.category },
+        { label: p.name },
+      ])}
+      <div class="flex justify-between items-center mg-page-head">
         <div>
           <h1 class="banner-title mg-page-title">${esc(p.name)}</h1>
           <p class="mg-page-sub">${esc(fmtRange(p.start_date, p.end_date))}${p.amount ? ' · ' + esc(money(p.amount)) + ' per sevarthi' : ''}</p>
@@ -143,27 +197,29 @@
 
       <div class="stats-grid">
         <div class="stat">
-          <div class="stat-text"><div class="stat-card-title">Seats</div>
+          <div class="stat-text"><div class="stat-card-title">Registered</div>
             <div class="stat-card-value">${p.total_seats === null ? esc(num(p.booked_seats)) : esc(num(p.booked_seats) + '/' + num(p.total_seats))}</div>
-            <div class="mg-muted-xs">${p.seats_left === null ? 'open seating' : esc(num(p.seats_left)) + ' open'}</div></div>
-          <span class="stat-ico people">${icon('seat')}</span>
+            <div class="mg-muted-xs">${p.capacity_mode === 'limited'
+              ? esc(num(p.seats_left)) + ' left'
+              : p.capacity_mode === 'unlimited' ? 'unlimited' : 'capacity not decided'}</div></div>
+          <span class="stat-ico people">${icon('user-check')}</span>
         </div>
         <div class="stat">
           <div class="stat-text"><div class="stat-card-title">Received</div>
             <div class="stat-card-value">${esc(money(received))}</div>
             <div class="mg-muted-xs">${p.target_amount ? 'of ' + esc(money(p.target_amount)) : 'no target set'}</div></div>
-          <span class="stat-ico rupee">${icon('rupee')}</span>
+          <span class="stat-ico rupee">${icon('wallet')}</span>
         </div>
         <div class="stat">
           <div class="stat-text"><div class="stat-card-title">Committed</div>
             <div class="stat-card-value">${esc(money(p.committed))}</div>
             <div class="mg-muted-xs">by ${esc(num(p.ledger.filter((l) => l.status !== 'cancelled').length))} sevarthi</div></div>
-          <span class="stat-ico grace">${icon('check')}</span>
+          <span class="stat-ico grace">${icon('target')}</span>
         </div>
         <div class="stat">
           <div class="stat-text"><div class="stat-card-title">Outstanding</div>
-            <div class="stat-card-value" style="color:var(--warning)">${esc(money(Math.max(0, p.committed - received)))}</div>
-            <div class="mg-muted-xs">still to collect</div></div>
+            <div class="stat-card-value" style="color:var(--warning)">${esc(money(p.outstanding))}</div>
+            <div class="mg-muted-xs">${p.excess > 0 ? esc(money(p.excess)) + ' given over' : 'still to collect'}</div></div>
           <span class="stat-ico due">${icon('clock')}</span>
         </div>
       </div>
@@ -171,9 +227,11 @@
       <div class="card">
         <div class="card-header">
           <h2>${whole ? 'Patla' : 'Day-wise seating (patla)'}</h2>
-          ${p.start_date
-            ? `<span class="small muted">tap to change the count</span>`
-            : '<button class="btn btn-outline mg-btn-xs" data-set-dates>Set dates</button>'}</div>
+          <div class="card-head-actions">
+            ${p.start_date ? '<span class="small muted">tap a day to change its count</span>' : ''}
+            <button class="btn btn-outline mg-btn-xs" data-set-dates>
+              ${icon('calendar','ico-sm')} ${p.start_date ? 'Change dates' : 'Set dates'}</button>
+          </div></div>
         <div class="card-body">
           ${p.total_seats !== null && p.amount > 0 ? `<p class="small muted" style="margin-bottom:.7rem">
             ${esc(num(p.total_seats))} patla × ${esc(money(p.amount))} = <strong>${esc(money(p.total_seats * p.amount))}</strong> at full seating
@@ -201,40 +259,57 @@
         <div class="card-header"><h2>Sevarthi ledger</h2>
           <span class="small muted">in order of joining</span></div>
         <div class="card-body" style="padding:0">
-          ${p.ledger.length ? p.ledger.map((l, i) => {
-            const due = Math.max(0, l.amount_committed - l.amount_paid);
-            const devoteeShare = Math.max(0, l.amount_committed - l.bhuvaji_planned_amount);
+          ${ledgerPg.slice.length ? ledgerPg.slice.map((l) => {
+            const c = UI.coverage(l);
+            /* The row carries the headline figure; the full split still
+               travels with it as a tooltip so nothing is actually lost
+               by not printing five lines per sevarthi. */
+            const detail = [
+              `Committed ${money(c.committed)}`,
+              c.devotee_paid ? `Devotee paid ${money(c.devotee_paid)}` : null,
+              c.bappa_paid ? `Bapa paid ${money(c.bappa_paid)}` : null,
+              c.bappa_planned ? `Bapa agreed to cover ${money(c.bappa_planned)}` : null,
+              c.outstanding ? `Outstanding ${money(c.outstanding)}` : null,
+              c.excess ? `Excess ${money(c.excess)}` : null,
+            ].filter(Boolean).join(' · ');
             return `
             <div class="ledger-item">
-              <span class="ledger-seq">${i + 1}</span>
+              <span class="ledger-avatar" aria-hidden="true">${icon('users')}</span>
               <div class="row-main">
-                <div class="row-title">${esc(l.full_name)} ${statusBadge(l.status)}</div>
+                <div class="row-title">${esc(l.full_name)} ${UI.coverageBadges(l)}</div>
                 <div class="row-sub">${esc(fmtDate(l.slot_date))}
                   ${l.samaj ? ' · ' + esc(l.samaj) : ''}${l.mobile ? ' · ' + esc(l.mobile) : ''}</div>
               </div>
-              <div class="row-end">
-                <div class="ledger-breakdown">
-                  <div class="ledger-bd-row"><span>Committed</span><strong>${esc(money(l.amount_committed))}</strong></div>
-                  ${l.bhuvaji_planned_amount > 0 ? `
-                  <div class="ledger-bd-row"><span>Devotee's share</span><strong>${esc(money(devoteeShare))}</strong></div>
-                  <div class="ledger-bd-row" style="color:var(--warning)"><span>Bapa's share</span><strong>${esc(money(l.bhuvaji_planned_amount))}</strong></div>` : ''}
-                  <div class="ledger-bd-row" style="color:var(--success)"><span>Received</span><strong>${esc(money(l.amount_paid))}</strong></div>
-                  ${due > 0 && l.status !== 'cancelled' ? `
-                  <div class="ledger-bd-row" style="color:var(--danger)"><span>Outstanding</span><strong>${esc(money(due))}</strong></div>` : ''}
+              <div class="row-end ledger-row-end">
+                <div class="ledger-money" title="${attr(detail)}">
+                  <div class="amt">${esc(money(l.amount_paid))}</div>
+                  <div class="sub ${c.outstanding > 0 && l.status !== 'cancelled' ? 'is-due' : ''}">${
+                    l.status === 'cancelled' ? 'Cancelled'
+                      : c.outstanding > 0 ? esc(money(c.outstanding)) + ' outstanding'
+                      : c.excess > 0 ? esc(money(c.excess)) + ' over'
+                      : 'Fully covered'}</div>
                 </div>
                 ${l.status !== 'cancelled' ? `
-                <div style="display:flex;gap:.35rem;margin-top:.4rem">
-                  ${due > 0 ? `<button class="btn btn-outline mg-btn-xs" data-pay="${attr(l.booking_id)}">Pay</button>` : ''}
-                  <button class="btn btn-outline mg-btn-xs" data-edit-booking="${attr(l.booking_id)}">Edit</button>
+                <div class="row-actions">
+                  ${c.outstanding > 0 ? `<button class="icon-btn" data-pay="${attr(l.booking_id)}"
+                    title="Collect payment" style="color:var(--ink-soft)">${icon('rupee','ico-sm')}</button>` : ''}
+                  <button class="icon-btn" data-edit-booking="${attr(l.booking_id)}"
+                    title="Edit registration" style="color:var(--ink-soft)">${icon('edit','ico-sm')}</button>
                 </div>` : ''}
               </div>
             </div>`;
           }).join('')
           : UI.empty('No sevarthi yet', 'Add the first sevarthi for this pooja.', 'seat')}
         </div>
+        ${UI.pager(ledgerPg, 'sevarthi')}
       </div>`;
 
-    host.querySelector('[data-back]').addEventListener('click', () => navigate('mahotsav', p.category));
+    /* A popular patla tier can carry hundreds of sevarthi, so the
+       ledger pages like every other long list. The page lives on the
+       module, not in the template, so paging does not refetch. */
+    UI.bindPager(host, (d) => { ledgerPage = ledgerPg.page + d; renderPooja(host, id); });
+
+    bindCrumbs(host);
     host.querySelector('[data-edit-pooja]').addEventListener('click', () => poojaForm(p.category, p));
     host.querySelector('[data-add-sevarthi]').addEventListener('click', () =>
       Forms.addSevarthi({ category: p.category, poojaId: p.id }));
@@ -253,23 +328,58 @@
 
   /* ---------- fix the dates on a pooja that had none ---------- */
   function datesForm(p) {
+    const dated = !!p.start_date;
+    const seated = p.slots.reduce((a, s) => a + s.booked_count, 0);
+
     openSheet({
-      title: 'Set dates — ' + p.name,
+      title: (dated ? 'Change dates — ' : 'Set dates — ') + p.name,
       body: `
-        <p class="small muted">Any sevarthi already booked moves to the first day.</p>
+        <p class="small muted">${dated
+          ? `Days move by position: the first day of the pooja becomes the first day of the new
+             range, the second becomes the second, and so on${seated
+               ? ` — so the ${num(seated)} sevarthi already seated travel with their day.`
+               : '.'}`
+          : 'Any sevarthi already booked moves to the first day.'}</p>
         <form id="datesForm" novalidate>
           <div class="form-row">
             <div class="form-group"><label class="form-label req" for="f_start_date">Start date</label>
-              <input class="form-input" id="f_start_date" name="start_date" type="date"></div>
+              <input class="form-input" id="f_start_date" name="start_date" type="date"
+                     value="${attr(p.start_date || '')}" required></div>
             <div class="form-group"><label class="form-label req" for="f_end_date">End date</label>
-              <input class="form-input" id="f_end_date" name="end_date" type="date"></div>
+              <input class="form-input" id="f_end_date" name="end_date" type="date"
+                     value="${attr(p.end_date || '')}" required></div>
           </div>
           <div class="form-hint">For a one-day pooja, use the same date in both.</div>
-        </form>`,
+          ${dated && p.seating_mode !== 'whole' ? `<div class="form-hint">
+            Shortening the range is refused if sevarthi are booked on the days that would be
+            dropped — move them first.</div>` : ''}
+        </form>
+        ${dated ? `<div class="divider"></div>
+          <button type="button" class="btn btn-outline btn-block" id="datesClear">
+            ${icon('close','ico-sm')} Clear the dates — back to "not decided yet"</button>
+          <div class="form-hint">The pooja keeps taking sevarthi; it just leaves the calendar
+            until a new date is fixed.</div>` : ''}`,
       footer: `<button class="btn btn-outline" data-sheet-close>Cancel</button>
-               <button class="btn btn-primary" id="datesSave">Save dates</button>`,
+               <button class="btn btn-primary" id="datesSave">${dated ? 'Save new dates' : 'Save dates'}</button>`,
       onMount(sheet) {
         sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
+
+        const clearBtn = sheet.querySelector('#datesClear');
+        if (clearBtn) clearBtn.addEventListener('click', () => {
+          UI.confirmSheet({
+            title: 'Clear the dates?',
+            message: `${p.name} goes back to "date not decided". Sevarthi already booked are kept ` +
+                     `and pooled onto one undated slot.`,
+            confirmLabel: 'Clear dates',
+            async onConfirm() {
+              try {
+                await API.put(`/poojas/${p.id}/dates/clear`);
+                closeSheet(); toast('Dates cleared', 'ok'); refreshPage();
+              } catch (err) { toast(err.message, 'err'); }
+            },
+          });
+        });
+
         sheet.querySelector('#datesSave').addEventListener('click', async (e) => {
           const form = document.getElementById('datesForm');
           clearFieldErrors(form);
@@ -280,7 +390,7 @@
           e.currentTarget.disabled = true;
           try {
             await API.put(`/poojas/${p.id}/dates`, data);
-            closeSheet(); toast('Dates set', 'ok'); refreshPage();
+            closeSheet(); toast(dated ? 'Dates updated' : 'Dates set', 'ok'); refreshPage();
           } catch (err) {
             e.currentTarget.disabled = false;
             toast(err.message, 'err');
@@ -367,6 +477,11 @@
     const p = existing || {};
     const editing = !!p.id;
     const noun = category === 'maha_yagna' ? 'yagna' : category === 'bhagvat_katha' ? 'katha' : 'pooja';
+    /* A new pooja starts as "not decided" rather than inventing a cap of
+       100: a limit the trust has not set is exactly the blocker Phase 1
+       is meant to avoid. The operator picks Limited when there is a
+       real number. */
+    const capMode = p.capacity_mode || 'not_decided';
 
     openSheet({
       title: editing ? 'Edit ' + p.name : 'New ' + (CAT_LABEL[category] || 'Pooja'),
@@ -389,24 +504,31 @@
             <div class="form-group"><label class="form-label req" for="f_end_date">End date</label>
               <input class="form-input" id="f_end_date" name="end_date" type="date"></div>
           </div>
-          <div class="form-group">
-            <label class="form-label">Seating</label>
-            <label class="small" style="display:flex;align-items:center;gap:.45rem;font-weight:500">
-              <input type="checkbox" name="fixed_capacity" checked style="width:auto;min-height:0"> Fixed patla count per day
-            </label>
-          </div>
-          <div class="form-group" id="seatsField">
-            <label class="form-label req" for="f_seats_per_day">Patla count</label>
-            <input class="form-input" id="f_seats_per_day" name="seats_per_day" type="number" min="1" step="1" value="100" inputmode="numeric">
-            <div class="form-hint" id="seatsHint">How many sevarthi can sit on one day.</div>
-          </div>
+          `}
           <div class="form-group">
             <label class="form-label" for="f_seating_mode">The count is</label>
             <select class="form-select" id="f_seating_mode" name="seating_mode">
-              <option value="per_day">per day — people come each day</option>
-              <option value="whole">the total — one sevarthi holds a patla for the whole event</option>
+              <option value="per_day" ${p.seating_mode !== 'whole' ? 'selected' : ''}>per day — people come each day</option>
+              <option value="whole" ${p.seating_mode === 'whole' ? 'selected' : ''}>the total — one sevarthi holds a patla for the whole event</option>
             </select>
-          </div>`}
+            ${editing ? `<div class="form-hint">Changing this rebuilds the day slots, so it is only
+              possible while no sevarthi are seated.</div>` : ''}
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="f_capacity_mode">Registration capacity</label>
+            <select class="form-select" id="f_capacity_mode" name="capacity_mode">
+              <option value="not_decided" ${capMode === 'not_decided' ? 'selected' : ''}>Not decided yet</option>
+              <option value="limited" ${capMode === 'limited' ? 'selected' : ''}>Limited — a maximum number</option>
+              <option value="unlimited" ${capMode === 'unlimited' ? 'selected' : ''}>Unlimited — no cap</option>
+            </select>
+            <div class="form-hint">Not decided still takes sevarthi — nothing is blocked until a limit is actually set.</div>
+          </div>
+          <div class="form-group" id="seatsField" style="${capMode === 'limited' ? '' : 'display:none'}">
+            <label class="form-label req" for="f_seats_per_day">Maximum registrations</label>
+            <input class="form-input" id="f_seats_per_day" name="seats_per_day" type="number" min="1" step="1"
+                   value="${attr(p.seats_per_day ?? 100)}" inputmode="numeric">
+            <div class="form-hint" id="seatsHint"></div>
+          </div>
           <div class="form-row">
             <div class="form-group"><label class="form-label" for="f_amount">Contribution per sevarthi</label>
               <input class="form-input" id="f_amount" name="amount" type="number" min="0" step="1" value="${attr(p.amount ?? 0)}" inputmode="numeric"></div>
@@ -424,30 +546,56 @@
           </div>` : ''}
           <div class="form-group"><label class="form-label" for="f_description">Note</label>
             <textarea class="form-textarea" id="f_description" name="description" data-translate rows="2">${esc(p.description || '')}</textarea></div>
-          ${editing ? `<div class="form-hint">Dates and patla counts are changed from the pooja page — use
-            "Set dates" or tap a day to change its seat count.</div>` : ''}
+          ${editing ? `<div class="divider"></div>
+            <div class="form-hint">The dates are changed with <strong>Change dates</strong> on the pooja
+              page, and one day's count by tapping that day.</div>
+            <button type="button" class="btn btn-outline btn-block mg-danger-ghost" id="poojaDelete">
+              ${icon('trash','ico-sm')} Delete this ${noun}</button>
+            <div class="form-hint">Only possible while no sevarthi are recorded against it. Otherwise
+              close it instead, which keeps the history.</div>` : ''}
         </form>`,
       footer: `<button class="btn btn-outline" data-sheet-close>Cancel</button>
                <button class="btn btn-primary" id="poojaSave">${editing ? 'Save' : 'Create'}</button>`,
       onMount(sheet) {
         sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
         const form = document.getElementById('poojaForm');
-        if (!editing) {
-          form.fixed_capacity.addEventListener('change', (e) => {
-            document.getElementById('seatsField').style.display = e.target.checked ? '' : 'none';
-            paintTargetHint();
+
+        /* The count only means something for a 'limited' pooja, and what
+           it counts depends on how this pooja is seated. */
+        const seatingModeOf = () => form.seating_mode.value;
+        function paintSeatsField() {
+          const limited = form.capacity_mode.value === 'limited';
+          document.getElementById('seatsField').style.display = limited ? '' : 'none';
+          document.getElementById('seatsHint').textContent = seatingModeOf() === 'whole'
+            ? 'The total number of this patla for the whole event.'
+            : 'The most sevarthi that can be registered for one day.';
+        }
+        form.capacity_mode.addEventListener('change', () => { paintSeatsField(); paintTargetHint(); });
+        form.seats_per_day.addEventListener('input', paintTargetHint);
+        paintSeatsField();
+
+        form.seating_mode.addEventListener('change', () => { paintSeatsField(); paintTargetHint(); });
+
+        const delBtn = sheet.querySelector('#poojaDelete');
+        if (delBtn) delBtn.addEventListener('click', () => {
+          UI.confirmSheet({
+            title: 'Delete ' + p.name + '?',
+            message: 'This removes the seva and its day slots. It cannot be undone.',
+            confirmLabel: 'Delete',
+            danger: true,
+            async onConfirm() {
+              await API.del('/poojas/' + p.id);
+              toast('Pooja deleted', 'ok');
+              navigate('mahotsav', p.category);
+            },
           });
+        });
+
+        if (!editing) {
           form.dates_known.addEventListener('change', (e) => {
             document.getElementById('datesFields').style.display = e.target.checked ? '' : 'none';
             paintTargetHint();
           });
-          form.seating_mode.addEventListener('change', (e) => {
-            document.getElementById('seatsHint').textContent = e.target.value === 'whole'
-              ? 'The total number of this patla for the whole event.'
-              : 'How many sevarthi can sit on one day.';
-            paintTargetHint();
-          });
-          form.seats_per_day.addEventListener('input', paintTargetHint);
           form.start_date.addEventListener('change', paintTargetHint);
           form.end_date.addEventListener('change', paintTargetHint);
         }
@@ -471,17 +619,15 @@
         function computeSuggested() {
           const amount = Number(form.amount.value || 0);
           if (!amount) return null;
-          let fixed, seats, mode, start, end;
-          if (editing) {
-            ({ fixed_capacity: fixed, seats_per_day: seats, seating_mode: mode, start_date: start, end_date: end } = p);
-          } else {
-            fixed = form.fixed_capacity.checked;
-            seats = Number(form.seats_per_day.value || 0);
-            mode = form.seating_mode.value;
-            start = form.dates_known.checked ? form.start_date.value : null;
-            end = form.dates_known.checked ? form.end_date.value : null;
-          }
-          if (!fixed || !seats) return null;
+          /* Capacity is editable in both modes now, so the live figure
+             always comes from the form; only the dates and the seating
+             mode are fixed once the pooja exists. */
+          const limited = form.capacity_mode.value === 'limited';
+          const seats = Number(form.seats_per_day.value || 0);
+          const mode = seatingModeOf();
+          const start = editing ? p.start_date : (form.dates_known.checked ? form.start_date.value : null);
+          const end = editing ? p.end_date : (form.dates_known.checked ? form.end_date.value : null);
+          if (!limited || !seats) return null;
           const days = mode === 'whole' ? 1 : daysCount(start, end);
           return { seats, amount, days, total: seats * amount * days };
         }
@@ -519,9 +665,9 @@
               data.start_date = null;
               data.end_date = null;
             }
-            if (data.fixed_capacity && !(Number(data.seats_per_day) > 0)) {
-              return showFieldError(form, 'seats_per_day', 'Enter how many can sit per day');
-            }
+          }
+          if (data.capacity_mode === 'limited' && !(Number(data.seats_per_day) > 0)) {
+            return showFieldError(form, 'seats_per_day', 'Enter the maximum number of registrations');
           }
           e.currentTarget.disabled = true;
           e.currentTarget.textContent = editing ? 'Saving…' : 'Creating…';

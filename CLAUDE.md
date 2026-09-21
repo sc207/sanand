@@ -5,17 +5,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm install     # once
-npm start       # run the server — http://localhost:3000
-npm run dev     # same, but restarts automatically on file changes (node --watch)
-npm run seed    # optional: seeds Maha Yagna + Bhagvat Saptah poojas with 100 patla/day
+npm install                  # once
+npm start                    # run the server — http://localhost:3000
+npm run dev                  # same, but restarts on file changes (node --watch)
+npm run seed                 # seeds the real Mahotsav seva list (idempotent, safe to re-run)
+node server/seed-dummy.js    # NOT an npm script: dummy sevarthi/payments for testing.
+                             # NOT idempotent — running it twice duplicates everything.
 ```
 
-There is no build step, bundler, linter, or test suite in this repo — nothing beyond the
-three scripts above to run. The frontend is served as-is from `public/`.
+There is **no build step, bundler, linter, or test suite** — nothing to run beyond the
+above. The frontend is served as-is from `public/`, so a reload is the whole feedback
+loop. Do not add a test command to this file unless a test runner is actually introduced.
+
+`npm run seed` only creates `pooja_events` / `pooja_slots`; `seed-dummy.js` only creates
+devotees, bookings and payments, and deliberately covers every booking state (pending /
+partial / paid / overpaid / cancelled, Bapa covering none/part/all, full and undated
+poojas, a reassigned booking). Use it before changing anything money- or status-related.
 
 Backup: the whole app state is one file, `data/temple.db` (plus its `-wal`/`-shm`
-siblings if the server is running). Stop the server first, or copy all three together.
+siblings while the server runs). Stop the server first, or copy all three together.
+
+`TEMPLE_DB=<path>` points the server (and `seed.js`) at a different database file, so a
+test run can use a throwaway one. The mandir always runs the default. Several checks
+assert whole-database totals and only hold on a freshly seeded schema, so run them like
+this rather than against the working database:
+
+```bash
+TEMPLE_DB=/tmp/t.db node server/seed.js
+TEMPLE_DB=/tmp/t.db PORT=3100 node server/server.js
+```
+
+**better-sqlite3 aborts the process if the database is still open at exit** — Node tears
+the isolate down first and the native cleanup hook asserts (`Assertion failed: (env) !=
+nullptr`) with a long native stack trace. This made `npm run dev` fail to come back on
+every save and `npm run seed` print a crash after doing its work. Both now call
+`db.close()` first (`server.js` on SIGINT/SIGTERM, `seed.js` at the end). Any new
+entry-point script that requires `./db` must do the same.
 
 Warm the local translator before an event so the first real use isn't slow:
 `curl -X POST localhost:3000/api/translate/warmup`
@@ -27,71 +52,284 @@ step** (plain `<script>` tags, no bundler, no JSX/TS). `models/` holds the offli
 translator (~870MB, downloaded on first use, not committed). `_legacy/` is a prior
 prototype kept for reference only — not wired into the running app.
 
+Nothing is fetched from the internet at runtime (fonts, icon sprite and the translator
+all live on disk) — the app must keep working on a laptop at the mandir with no
+connection. Don't introduce a CDN link, web font or remote API call.
+
 ### Backend (`server/`)
 
 - `server.js` mounts each `routes/*.js` under `/api/<resource>`, then serves `public/`
-  as static with an SPA fallback: any non-`/api` GET returns `index.html`.
-- `db.js` defines the schema with `CREATE TABLE IF NOT EXISTS` plus a handful of ad hoc
-  `ALTER TABLE ... ADD COLUMN` checks run at require-time — there is no separate
-  migration tool or migration files; schema changes go directly into `db.js`.
-- Core tables and how they relate:
-  - `lookups` — one generic table for every managed list (samaj / devotee_category /
-    donation_category), disambiguated by a `type` column, so a new list needs no new
-    table.
-  - `devotees` — the permanent register. **Mobile number is the identity/dedup key**
-    (see `upsertDevotee` in `devotees.js`) — creating a booking with a known mobile
-    updates that devotee rather than duplicating them. Devotees are never deleted via
-    the API.
-  - `pooja_events` — one yagna/pooja/katha, always inside one of three hardcoded
-    categories (`maha_yagna` | `mandir_pooja` | `bhagvat_katha`, defined in the
-    `CATEGORIES` map in `poojas.js`). `start_date`/`end_date` and `seats_per_day` can
-    all be `NULL` — see Domain context below for why.
-  - `pooja_slots` — one row per calendar day of a pooja. `slot_date IS NULL` means the
-    date isn't fixed yet; `capacity IS NULL` means unlimited seating for that day.
-    Seats are booked against a slot, not the pooja.
-  - `sevarthi_bookings` — a devotee's seat on one slot. **`status` is derived, never
-    set directly** (except by cancel): `refreshStatus()` in `bookings.js` recomputes
-    it from the payments ledger every time a payment is recorded.
-  - `payments` — append-only cash ledger, read back FIFO by `created_at`. `payer_type`
-    is `devotee` or `bhuvaji` (Bhuvaji Suresh Bapa can cover part or all of a seat's
-    committed amount — see `sevarthi_bookings.bhuvaji_planned_amount`).
-  - `donations`, `visits`, `users` / `audit_log`, `settings`.
-- **Seat safety is a transaction, not a UI convention**: in `bookings.js` `POST /`, the
-  fresh capacity check, the booking insert, and the `booked_count` increment all run
-  inside one `db.transaction()`. That's what actually prevents overbooking — the
-  frontend disabling full slots/poojas is a UX nicety on top of it, not the mechanism.
-- Every create/update/delete/cancel/payment route calls `log(req, {...})` from
-  `middleware/audit.js`, which writes an `audit_log` row using the acting user's name
-  from the `X-User-Name` request header. There is **no real authentication** — that
-  header is set client-side from whichever operator is picked in the "signed in as"
-  switcher (`Forms.switchUser`, persisted in `localStorage`).
+  as static with an SPA fallback: any non-`/api` GET returns `index.html`. The static
+  caching is deliberate — fonts/images cache for a week, HTML/CSS/JS are `no-cache` so
+  an update never leaves an operator looking at a stale screen.
+- `db.js` defines the schema with `CREATE TABLE IF NOT EXISTS`, plus a few ad hoc
+  migrations run at require-time (full table rebuilds to drop `NOT NULL`, guarded
+  `ALTER TABLE ... ADD COLUMN` for the rest, each behind a `PRAGMA table_info` check).
+  There is **no migration tool and no migration files** — schema changes go directly
+  into `db.js`, written as idempotent guarded blocks in that same style, because
+  databases in the field are only ever upgraded in place.
+- `util/dates.js` — `todayLocal()` / `monthLocal()` use `toLocaleDateString('en-CA')`.
+  SQLite stamps rows with `datetime('now','localtime')`, so **never use
+  `toISOString()`** for a date: it is UTC and files an early-morning entry under the
+  previous day.
+
+#### Core tables and how they relate
+
+- `lookups` — one generic table for every managed list (samaj / devotee_category /
+  donation_category), disambiguated by a `type` column, so a new list needs no new
+  table. Deletes are soft (`active = 0`).
+- `devotees` — the permanent register. **Mobile number is the identity/dedup key**
+  (see `upsertDevotee` in `devotees.js`): creating a booking with a known mobile updates
+  that devotee rather than duplicating them, and the update **merges** — a blank field
+  in the incoming payload means "unchanged", never "erase what we already know".
+  Devotees are never deleted via the API.
+- `pooja_events` — one yagna/pooja/katha, always inside one of three hardcoded
+  categories (`maha_yagna` | `mandir_pooja` | `bhagvat_katha`, defined in the
+  `CATEGORIES` map in `poojas.js`). `start_date`/`end_date` and `seats_per_day` can all
+  be `NULL` — see Domain context below for why.
+- `pooja_slots` — one row per calendar day of a pooja. `slot_date IS NULL` means the
+  date isn't fixed yet; `capacity IS NULL` means unlimited seating for that day.
+  Seats are booked against a slot, not the pooja.
+- `sevarthi_bookings` — a devotee's seat on one slot. **`status` is derived, never set
+  directly** (except by cancel): `refreshStatus()` in `bookings.js` recomputes it from
+  the payments ledger after every payment, edit and payment deletion.
+- `payments` — append-only cash ledger, read back FIFO by `created_at`. `payer_type` is
+  `devotee` or `bhuvaji` (Bhuvaji Suresh Bapa can cover part or all of a seat's
+  committed amount — the *plan* lives on `sevarthi_bookings.bhuvaji_planned_amount`,
+  who *actually* paid lives on each payment row).
+- `donations`, `visits` + `visit_escorts`, `users` / `audit_log`, `settings`.
+  A `visits` row keeps its **own** `mobile`/`city`, which are an *override* for a
+  padhramni held somewhere other than the devotee's usual place — normally they are
+  NULL. `GET /api/visits` therefore `LEFT JOIN`s `devotees` and returns
+  `COALESCE(v.mobile, d.mobile)` (same for `city`, and the register's current
+  `full_name`), keeping the raw values as `visit_mobile` / `visit_city`; without that
+  fallback a row picked from the register showed nothing but a date. `GET
+  /api/visits/:id` returns the raw columns instead, because the edit form must not
+  silently copy the devotee's details onto the visit — it shows them as placeholders.
+  The list is ordered **ascending** for anything still to happen (`upcoming=1`,
+  `status=requested|confirmed`) because those are queues to work through, and
+  descending for `completed` / all, which are a record.
+
+#### Two rules everything else follows
+
+1. **Seat safety is a transaction, not a UI convention.** In `bookings.js` `POST /` the
+   fresh capacity re-read, the booking insert and the `booked_count` increment all run
+   inside one `db.transaction()`; `POST /:id/reassign` does the same across two slots
+   (release the old, re-check and increment the new). better-sqlite3 is synchronous and
+   Node is single-threaded, so nothing can interleave. The frontend disabling full slots
+   is a UX nicety on top, not the mechanism. Any new path that seats someone must do the
+   same, re-reading the slot *inside* the transaction rather than trusting a row fetched
+   earlier.
+2. **Money is never stored as a total.** A booking's received amount is always
+   `SUM(payments.amount)` computed at read time; there is no `amount_paid` column. Never
+   add one, and never write a status by hand — record a payment row and call
+   `refreshStatus()`.
+
+#### Derived money, in one place
+
+```
+committed      sevarthi_bookings.amount_committed
+paid           SUM(payments.amount)                        -- both payer types together
+bappa support  SUM(payments.amount WHERE payer_type='bhuvaji')
+outstanding    max(committed - paid, 0)
+excess         max(paid - committed, 0)                    -- preserved, never clamped away
+```
+
+`status`: `pending` (paid = 0) · `partially_paid` (0 < paid < committed) · `paid`
+(paid >= committed; overpayment stays `paid`) · `cancelled` (seat released,
+`booked_count--`). The `paid` badge reads **"Covered"** in the UI (`ui.js` `statusBadge`),
+which is the trust's word and the only honest one when Bapa covered the whole amount.
+
+**Outstanding and excess are summed per booking, never netted globally.**
+`SUM(max(committed − paid, 0))`, not `max(SUM(committed) − SUM(paid), 0)` — netting lets
+one sevarthi's overpayment cancel another's shortfall and under-reports what is left to
+collect. That bug was live on the dashboard and the pooja page before this was fixed;
+don't reintroduce it by subtracting two totals.
+
+Server-side these come from one query shape (see `poojaStats()` in `poojas.js` and the
+`coverage` roll-up in `misc.js`); client-side every screen goes through `UI.coverage(row)`
+and `UI.coverageBadges(row)` rather than doing its own `Math.max`. **Bappa Supported** and
+**Excess** are indicators derived there — deliberately *not* statuses, so the booking
+state machine stays as `db.js` defines it. Read paths that return `amount_paid` also
+return `devotee_paid` and `bappa_paid`.
+
+#### Audit
+
+Every create/update/delete/cancel/payment route calls `log(req, {...})` from
+`middleware/audit.js`, which writes an `audit_log` row using the acting user's name from
+the `X-User-Name` request header. There is **no real authentication** — that header is
+set client-side from whichever operator is picked in the "signed in as" switcher
+(`Forms.switchUser`, persisted in `localStorage`). Roles (`superadmin` / `admin` /
+`accountant` / `operator`) exist on `users` but nothing enforces them. Keep it that way
+unless explicitly asked — don't bolt on an auth system as a side effect of other work.
+
+#### API surface
+
+| Mount | Endpoints |
+|---|---|
+| `/api/lookups` | `GET /` · `POST /` · `PUT /:id` (rename) · `DELETE /:id` (soft) |
+| `/api/devotees` | `GET /` · `GET /:id` (profile: bookings + donations) · `POST /` (upsert by mobile) · `PUT /:id` |
+| `/api/poojas` | `GET /categories` · `GET /` · `GET /:id` (slots + FIFO ledger) · `POST /` · `PUT /:id` · `PUT /:id/dates` · `PUT /:id/dates/clear` · `PUT /slots/:slotId` · `DELETE /:id` |
+| `/api/bookings` | `GET /` · `GET /:id` · `POST /` · `PUT /:id` · `POST /:id/cancel` · `POST /:id/reassign` |
+| `/api/payments` | `GET /` · `GET /by-day` · `GET /outstanding` · `POST /` · `PUT /:id` · `DELETE /:id` |
+| `/api/donations` | `GET /` · `POST /` · `PUT /:id` · `DELETE /:id` |
+| `/api/visits` | list / create / update / delete |
+| `/api` (`misc.js`) | `GET /dashboard` · `GET /calendar` · `GET`/`PUT` `/settings` · `GET`/`POST`/`PUT` `/users` · `GET /audit` · `GET /translate/status` · `POST /translate` · `POST /translate/warmup` |
+
+`POST /api/bookings/:id/reassign` moves a booking to another slot/pooja while keeping
+its payment history on the same booking id — prefer it over cancel-and-recreate when a
+sevarthi changes seva.
+
+#### Everything the trust enters, the trust can correct
+
+The operator must be able to fix any entry — a standing requirement, not a feature
+request. What each correction has to preserve:
+
+| Change | Route | Rule it must keep |
+|---|---|---|
+| Re-date a pooja, even a live one | `PUT /poojas/:id/dates` | Days re-date **by position**: old day one becomes new day one. Bookings hang off the slot id, so sevarthi travel with their day. Refuses to shorten a range over a day that still has bookings, naming those days. |
+| Un-date a pooja | `PUT /poojas/:id/dates/clear` | Back to "not decided"; bookings pool onto the single undated slot. |
+| Seating mode | `PUT /poojas/:id` | Rebuilds the slots, so only while nothing is seated. |
+| Registration capacity | `PUT /poojas/:id` | Only rewrites slots when the decision actually changed (see the tri-state section). |
+| Delete a pooja | `DELETE /poojas/:id` | Only while no bookings exist — otherwise close it, which keeps the history. |
+| Correct a payment | `PUT /payments/:id` | Re-runs `refreshStatus()` and audits before/after. The ledger stays the source of truth; never hand-set a booking total. |
+| Correct a donation | `PUT /donations/:id` | Keeps the receipt number and audit trail that delete-and-retype loses. |
+| Rename a list entry | `PUT /lookups/:id` | Devotees reference the row by id, so one rename fixes every devotee. Refuses a name already in that list. |
+
+When a correction genuinely cannot be allowed, the error says **what to do instead**
+(move the sevarthi, close rather than delete). A bare refusal leaves the operator stuck.
+
+Re-dating runs in one transaction that first NULLs every `slot_date`, because
+`UNIQUE (pooja_id, slot_date)` would otherwise collide halfway through a one-day shift;
+several NULLs never conflict in a SQLite unique index.
+
+### Seating: `seating_mode` and `fixed_capacity`
+
+Easy to get wrong, and it changes what a "day" means:
+
+- `seating_mode = 'per_day'` — the patla count applies to **each** day, so a 6-day katha
+  with 100 patla seats 600. One `pooja_slots` row per calendar day.
+- `seating_mode = 'whole'` — the count is the total for the **entire** event; one
+  sevarthi holds that patla every day. The Maha Yagna tiers work this way (there is one
+  Mukhya Patlo, not one per day). A `whole` pooja keeps a **single pooled slot**, so its
+  slot count is not its day count — `withStats()` in `poojas.js` recomputes `day_count`
+  from the date range, and `GET /api/calendar` draws it across its range separately from
+  per-day poojas.
+- `fixed_capacity = 0` means open seating; its slots carry `capacity = NULL`.
 
 ### Frontend (`public/`)
 
 - Script load order in `index.html` matters and is intentional: `lang.js`, `api.js`,
   `ui.js`, `print.js`, then every `pages/*.js` (each registers itself as
-  `window.Pages.<key> = { render(host, params) }`), then `forms.js`, then `app.js`
-  last (the router, which reads `window.Pages`).
-- `app.js` is a hash-based router: a `PAGES` registry (`{ key: { title } }`) maps a
-  hash segment to a page module. **To add a new page**: create
-  `public/js/pages/x.js` exporting `global.Pages.x = { render }`, add its `<script>`
-  tag to `index.html`, add an entry to `app.js`'s `PAGES` map, and add a nav link
-  (`data-page="x"`) in the sidebar/mobile-nav markup in `index.html`.
-  `window.navigate(page, ...params)` and `window.refreshPage()` are the globals pages
-  use to move around / re-render themselves after a mutation.
+  `window.Pages.<key> = { render(host, params) }`), then `forms.js`, then `app.js` last
+  (the router, which reads `window.Pages`).
+- `app.js` is a hash-based router: a `PAGES` registry (`{ key: { title } }`) maps a hash
+  segment to a page module. **To add a new page**: create `public/js/pages/x.js`
+  exporting `global.Pages.x = { render }`, add its `<script>` tag to `index.html`, add
+  an entry to `app.js`'s `PAGES` map, and add a nav link (`data-page="x"`) in the
+  sidebar/mobile-nav markup in `index.html` (and, if it belongs there, the `moreMenu()`
+  list in `app.js`). `window.navigate(page, ...params)` and `window.refreshPage()` are
+  the globals pages use to move around / re-render themselves after a mutation.
+- **A picker inside a form previews, it does not dump.** Add Sevarthi's matching-seva
+  list is ranked best-fit first and shows five with a "Show N more seva" button; all
+  thirty-five buried the form's own fields under a wall of cards. Collapse it again
+  when the category filter changes. The same principle, different mechanism, applies
+  to a long *selection* list like the invitation checklist: that scrolls in its own
+  box rather than paging, because paging a multi-select means hunting for your ticks
+  across pages.
+- **Page-level forms pair their fields into `.form-row` columns** and put buttons in a
+  `.form-actions` row at natural width. A card in the content column is ~1300px wide,
+  so one field per line leaves it half empty and a `btn-block` Save spans the lot.
+  Settings is the only page-level form; every other form lives in the sheet.
+- **Busy list rows disclose progressively — `UI.expandableRow(summary, detail, opts)`
+  plus `UI.bindExpanders(root)`.** Payments, the devotee register and Padhramni all use
+  it. The collapsed strip carries only what the page's job needs in order to *choose* a
+  row, and one primary action; everything else opens underneath. What each page leads
+  with is a deliberate answer to "what is this operator doing":
+    - **Payments** — collecting. Name + coverage badges, mobile, the outstanding
+      figure, `Collect`. The panel holds the seva and its date, samaj, the full
+      `.fig-band`, the registered/last-paid dates, and Bapa support / ledger / edit.
+    - **Devotee** — identifying a person. Name + category/samaj badges, mobile (it *is*
+      the dedup key), city, `Profile`. The panel holds the money band, donations,
+      padhramni count, register date and + Seva / Edit.
+    - **Padhramni** — a diary, not a register. Name + status, mobile, place, purpose,
+      and a `.lead-fig` toned by how soon (`UI.whenDay` → Today / Tomorrow / In 3 days /
+      overdue), plus the single next step (`Confirm` → `Mark done`). The panel holds
+      address, escorts, samaj and notes.
+  The whole summary strip toggles, not just the chevron; `bindExpanders` ignores clicks
+  that started on a `button`/`a`/`input`/`select` so row actions still act. Panels get
+  unique generated ids, so re-bind after every repaint (a page change, a re-sort).
+  **Trap:** `.row-more` sets `display: flex`, which beats the UA's `[hidden]
+  { display: none }` — every panel rendered open while the toggle silently worked.
+  Any class that gives a hideable element a `display` must re-assert `[hidden]`.
+- **Row anatomy for list pages** (`.fig-band` + `.fig`/`.fig-k`/`.fig-v`, `.collect-meta`,
+  `.collect-when`, `.lead-fig`/`.lead-k`/`.lead-v`, in `app-extras.css`): a title line, a
+  wrapping meta line, a tinted band of *labelled* figure cells, then when it happened.
+  Three rules learned the hard way: never put figures on one run-on line (they become a
+  wall of digits with no column to scan); never leave `.row-sub`'s ellipsis on a meta
+  line that carries a mobile number or samaj — it cut off exactly what the operator
+  rings; and `.lead-v` inherits `--font-heading` (Cinzel), which renders lowercase as
+  small caps — right for a figure, wrong for a phrase like "In 3 days", so the padhramni
+  lead overrides it back to `--font-body`.
+- **A devotee's money can exist without a live booking.** `booking_count` excludes
+  cancelled seats but `total_paid` does not, so a devotee whose only seva was cancelled
+  has payments and no bookings. Gating a row's figures on `booking_count` alone hides
+  that money; gate on `total_paid` too, and `cancelled_count` says why it is there.
+- **Long lists page through `UI.paginate` / `UI.pager` / `UI.bindPager`** (25 a page,
+  `UI.PAGE_SIZE`) — the devotee register, a pooja's sevarthi ledger, the collections
+  list and the audit trail all use the same helper so they behave alike. `paginate`
+  clamps a page that a filter change left past the end; `pager` renders nothing when
+  everything fits on one page, which is why it is invisible on short lists. Reset the
+  page to 1 whenever the filter or search changes, and keep the fetched rows in module
+  state so paging does not re-hit the API.
+- **`data-page` is reserved by the router.** `app.js` has a delegated
+  `document.addEventListener('click')` that calls `e.target.closest('[data-page]')` and
+  navigates, so *any* element carrying that attribute anywhere in the app becomes a nav
+  link. A pager built with `data-page="next"` silently navigated to an unknown page and
+  fell back to the dashboard — the list vanished mid-click with no console error. Name
+  page-local hooks something else (`data-pager`, `data-filter`, `data-view`); the same
+  applies to `data-action` and `data-sheet-close`, which are also globally delegated.
 - `api.js` is the only place `fetch()` is called; every request carries `X-User-Name`
-  for the audit log.
+  for the audit log, and it exposes named domain shortcuts (`API.pooja(id)`,
+  `API.outstanding(q)`, …) alongside raw `API.get/post/put/del`.
 - `ui.js` is the shared UI kit: `openSheet`/`closeSheet` drive the **single** `#sheet`
   modal reused by the entire app — opening a sheet while one is already open replaces
   its content rather than stacking a second dialog, so a nested "+ add new X" flow
-  (`bindLookupAdders`) discards the parent form's in-progress state. Also here:
-  `readForm`/`showFieldError`/`clearFieldErrors`, `lookupSelect` (dropdown + inline
-  "add new" for samaj/category-style lookups), and formatting helpers (`money`,
-  `fmtDate`, `statusBadge`, `progressBar`).
-- `forms.js` holds multi-step flows reachable from more than one place (Add Sevarthi,
-  Add Payment, quick-add menu, global search, lookup adders, user switcher) — kept
-  separate from `pages/` because they're invoked from many pages rather than routed.
-- `pages/*.js` — one file per sidebar section, each exporting `{ render(host, params) }`.
+  (`bindLookupAdders`) discards the parent form's in-progress state.
+  `#sheet` is a **native `<dialog>`** opened with `showModal()`, which is where the
+  focus trap, Esc-to-close and top-layer stacking come from. Cleanup hangs off the
+  dialog's own `close` event (`teardownSheet`), so Esc, light dismiss and `closeSheet()`
+  all leave the same state — never put teardown in `closeSheet()` alone. `styles.css`
+  still styles it as a full-viewport `.modal-overlay`, so `app-extras.css` resets the
+  UA's dialog box (max-width/height, border, margin) and keeps `::backdrop` transparent
+  to avoid dimming twice. Also here:
+  `readForm`/`showFieldError`/`clearFieldErrors`, `lookupSelect`, `devoteeField` /
+  `bindDevotees` (devotee autocomplete), `bindTranslate` (the `data-translate` button),
+  and formatting helpers (`money`, `fmtDate`, `statusBadge`, `progressBar`, `esc`, `attr`).
+  All markup is built as template strings — **always** pass interpolated values through
+  `UI.esc()` (text) or `UI.attr()` (attribute values).
+- `forms.js` holds multi-step flows reachable from more than one place (`addSevarthi`,
+  `addPayment`, `editBooking`, `cancelBooking`, `reassignBooking`, `bookingHistory`,
+  quick-add menu, global search, lookup adders, user switcher) — kept separate from
+  `pages/` because they're invoked from many pages rather than routed.
+- `print.js` (`openPrintDoc`) opens a print window that **links** the real stylesheets,
+  so printed output matches the screen. It takes `{ title, wrapClass, inner, css }` —
+  the same shape the portal's `printInvitationHTML` uses, which is why that print
+  pipeline ported over unchanged.
+- `pages/invitation.js` is the **universal (combined) invitation**, ported from the
+  portal's `public/js/invite-ui.js`: tick any number of poojas and it builds one
+  certificate-grade A5 card listing them as a programme, split across further pages
+  when the list is long, optionally addressed to every devotee in a samaj/category.
+  The card design is **already in `styles.css` in full** (`.pj-invite--royal /
+  --cream / --festival / --civ`, `.civ-layout`, `.inv-page`, the corner marks, mandala
+  watermark and A5 print rules), so this file only emits the markup those rules
+  expect. Don't restyle the card, and check `styles.css` before adding invitation CSS.
+  Three adaptations to our data, each deliberate: the portal models sessions with
+  clock times where we have only a date range, so its "show session time" switch is
+  not carried over; its personalised cards address committee members and ours address
+  devotees by samaj / devotee category, there being no committee module until Phase 2;
+  and its PDF/ZIP export needs jsPDF + html2canvas from a CDN, which the offline rule
+  forbids — the print window's "Save as PDF" writes the same A5 pages.
 
 ### CSS — read this before changing styles
 
@@ -102,51 +340,196 @@ prototype kept for reference only — not wired into the running app.
 - `public/css/app-extras.css` holds only what `styles.css` doesn't have (patla slot
   grid, sevarthi ledger, EN/ગુ switch, etc.). New app-specific styling belongs here,
   reusing `styles.css`'s existing custom properties rather than inventing new ones.
+- **`styles.css` is the upstream theme, and the trust wants it kept.** It is
+  byte-identical to `public/css/styles.css` in
+  [sc207/svmds](https://github.com/sc207/svmds) apart from one line: the Google Fonts
+  `@import` is swapped for `/css/fonts.css`, because the app has to work with no
+  internet at the mandir. Re-pulling from upstream means re-applying that one swap and
+  nothing else. There was briefly a `theme.css` layer that restyled the type and
+  shapes to a flatter, sans-headed look; the trust chose the original portal look, so
+  it was **removed**, deliberately deleted rather than left unlinked — an unlinked
+  stylesheet is exactly the `app.css` trap below. Only two sheets are linked:
+  `styles.css` then `app-extras.css`.
 - `public/css/app.css` **exists on disk but is not linked from `index.html`.** It's a
-  leftover, self-contained earlier design system (its own `--maroon` token set, its
-  own `.stat`/`.stat-ico`/`.rail`/`.sheet`/`.topbar` classes) from before the app
-  adopted `styles.css` as its base. Editing it has no visible effect. If a class a
-  `pages/*.js` template renders appears completely unstyled, check whether it was only
-  ever defined in this dead file before assuming the class name is wrong — this has
-  happened at least once (`.stat`/`.stat-ico`, since ported into `app-extras.css`).
+  leftover, self-contained earlier design system (its own `--maroon` token set, its own
+  `.stat`/`.stat-ico`/`.rail`/`.sheet`/`.topbar` classes) from before the app adopted
+  `styles.css` as its base. Editing it has no visible effect. If a class a `pages/*.js`
+  template renders appears completely unstyled, check whether it was only ever defined
+  in this dead file before assuming the class name is wrong. This keeps happening:
+  `.stat`/`.stat-ico`, then `.btn-danger` (so every destructive confirm button looked
+  neutral), `.field-row`, `.cal-head`/`.cal-month`, `.badge-ico`, `.user-chip` and
+  `.loading` — all since ported into `app-extras.css`. The failure is silent, because
+  an undefined class is not an error: after adding markup, diff the classes the
+  templates emit against the three linked sheets rather than trusting the page to look
+  wrong in an obvious way.
+- A related trap: parts of `styles.css` were written for **emoji** glyphs, which its
+  `text-align: center` centred for free. This app renders SVG sprites instead and
+  `.ico` is `display: block`, so such a rule leaves the mark hard left — that is what
+  happened to `.mg-empty-mandala` on every empty state (fixed in `app-extras.css`).
+- Nothing capped the content width until `app-extras.css` set `max-width` on
+  `.content-wrapper`. Without it, list rows stretch the full monitor and their two ends
+  drift apart — a date at the far left and its amount at the far right. Keep the cap.
+- Icons are SVG sprite references (`/assets/icons.svg#name`, via `UI.icon()`), never emoji.
 
 ### Language
 
 Two independent mechanisms, deliberately not unified:
 - `public/js/lang.js` is a hand-written EN/Gujarati table for the app's own UI chrome
-  (nav labels, buttons, headings) — instant, offline, exact temple vocabulary. It never
-  touches devotee names, pooja names, or amounts.
+  (nav labels, buttons, headings), applied through `data-i18n` attributes and
+  `Lang.translateTree(host)` after each page render — instant, offline, exact temple
+  vocabulary. It never touches devotee names, pooja names, or amounts.
 - `server/translate.js` runs NLLB-200 locally (via `@huggingface/transformers`, model
   cached in `models/`) to translate **free text a person types** (notes, descriptions),
-  with a glossary in that file protecting temple/place terms from being mistranslated.
+  with a glossary in that file protecting temple/place terms from being mistranslated
+  (without it સાનંદ came back as "serenity"). Its regexes deliberately omit `\b` — JS
+  word boundaries only know Latin characters and never match around Gujarati text.
 
 When adding a translatable field, pick the mechanism based on whether it's static app
 copy (`lang.js`) or user-entered text (the `data-translate` attribute + `translate.js`).
 
-## Domain context — how the booking phase is meant to work
+## Domain context — Phase 1 is registration, not seating
 
-Per the trust, the priority order for this phase is: **(1)** get every devotee plus
-their chosen seva and a committed amount into the system first — the exact date can be
-decided later, once things are confirmed; **(2)** collect payment against what's
-already been entered; **(3)** a sevarthi may later add to an existing commitment
-(`PUT /api/bookings/:id` already supports raising `amount_committed` /
-`bhuvaji_planned_amount`) or ask to change which seva they're on (there's no
-reassign-slot endpoint yet — today that means cancelling the old booking and adding a
-new one); **(4)** a "who hasn't paid yet" view and **(5)** arranging sitting by seva
-date and headcount are both deliberately later concerns, not blockers for this phase —
-the goal right now is getting every sevarthi recorded against every seva without
-seating logistics getting in the way.
+The principle the trust has set: **first collect the truth, then use the truth to plan.**
+Phase 1's job is getting every devotee and every sevarthi registration into the system,
+with money tracked against it. Seating, dates and capacity planning are Phase 2.
+
+Priority order for this phase: **(1)** get every devotee plus their chosen seva and a
+committed amount in first — the exact date can be decided later, once things are
+confirmed; **(2)** collect payment against what's already entered; **(3)** let a
+sevarthi raise an existing commitment (`PUT /api/bookings/:id`) or move seva
+(`POST /api/bookings/:id/reassign`); **(4)** the "who hasn't paid yet" view, which is
+now the **Payments page's default tab** (see below); **(5)** arranging sitting by date
+and headcount remains a later concern, not a blocker for this phase.
+
+### The Payments page is a collections workbench, not a cash book
+
+`pages/payments.js` has **one view**, and it answers "who still owes". It lists every
+sevarthi with contribution / paid / Bapa / outstanding, filtered by Still to collect ·
+All · Pending · Partial · Covered · Bappa supported · Excess, paginated at 25 rows,
+with the actions that follow from a row on the row: Collect, Bapa support (opens the
+payment sheet already pointed at Bapa via `Forms.paymentForm(id, { payer_type:
+'bhuvaji' })`), ledger, edit registration, view devotee.
+
+It used to be a month-by-day cash book, then that book as a second "Received" tab.
+Both are gone at the trust's direction: the filters reach the same payments, the
+Universal Calendar already shows each day's takings and the dashboard the daily and
+monthly totals. **Don't rebuild it as the front door.** The one thing only the cash
+book could do — correct or remove an individual payment entry — lives in
+`Forms.bookingLedger(bookingId, onChanged)`, the per-sevarthi ledger on every row:
+coverage summary, every payment with correct/remove, then the change history. If that
+ledger is ever removed, `PUT`/`DELETE /api/payments/:id` lose their only caller and a
+mistyped payment becomes uncorrectable.
+
+Status (`pending`/`partially_paid`/`paid`) is the booking's own; *Covered*, *Bappa
+supported* and *Excess* are derived per booking through `UI.coverage`, which is why
+they are filters rather than statuses.
+
+There is deliberately **no date filter** on this page — one was built and then removed
+at the trust's request. If it is asked for again, note that "filter by date" has two
+honest answers here, because a row is a registration that also has payments against
+it: *registered on* (`sevarthi_bookings.created_at`) and *paid on* (the `booking_id`
+set from `GET /api/payments?from=&to=`). A January payment against a December
+registration belongs in different results depending on which was meant, so the control
+has to name its basis rather than offer one unlabelled date box. Any such control must
+also render on the empty path — an early return on "no rows" removes the very control
+needed to widen the period again.
 
 This is why the data model favors flexible entry over strict scheduling:
 `pooja_slots.slot_date` and `capacity` can both be `NULL` (undated, open/unlimited
 seating), so a pooja can take sevarthi before its date or headcount is finalized, and
 `PUT /api/poojas/:id/dates` converts the placeholder slot into day one once a date is
-fixed, carrying existing bookings over rather than disturbing them. When building
-booking-related features, default to **not** introducing new hard blockers (required
-dates, capacity caps) unless the trust has explicitly said that pooja's seating is
-fixed — an unset date/capacity is the normal, expected state for a pooja early on, not
-missing data to be validated against.
+fixed, carrying existing bookings over rather than disturbing them.
 
-Relatedly, `pooja_events.coordinator_devotee_id` and the generic `lookups` table exist
-now specifically so a later Phase 2 (Management Apps / Committee) can attach to them
-without a schema rewrite — both are unused today and should stay that way until Phase 2.
+**When building booking-related features, default to NOT introducing new hard blockers**
+(required dates, capacity caps, required sitting allocation) unless the trust has
+explicitly said that pooja's seating is fixed. An unset date/capacity is the normal,
+expected state for a pooja early on, not missing data to be validated against.
+
+### Registration capacity is a tri-state: `pooja_events.capacity_mode`
+
+The trust distinguishes three things that must not be collapsed into two:
+
+| `capacity_mode` | Registrations | Slot `capacity` | UI says |
+|---|---|---|---|
+| `not_decided` | allowed | `NULL` | "capacity not decided" |
+| `limited` | blocked once reached | `seats_per_day` | "42 / 100 registered" |
+| `unlimited` | always allowed | `NULL` | "unlimited" |
+
+**The column is descriptive, not a second enforcement engine.** Enforcement is still the
+slot capacity check inside the booking transaction — only `limited` ever puts a number
+on a slot, so only `limited` can block anyone. `not_decided` and `unlimited` behave
+identically; they differ in wording, because the app must not announce "unlimited" on
+the trust's behalf. Never show "Capacity Full" for a pooja with no configured capacity.
+
+The number for a `limited` pooja lives in `seats_per_day` only — deliberately **not**
+duplicated into a second "limit" column, or the two would drift from what the slots
+enforce. `fixed_capacity` is now derived (`1` iff `limited`) and kept only for
+compatibility. The invariant is:
+
+```
+fixed_capacity = 1 AND seats_per_day IS NOT NULL   <=>   capacity_mode = 'limited'
+```
+
+`db.js` re-asserts that on every boot (a logged repair), because the seed scripts write
+`pooja_events` with raw SQL and a direct INSERT that forgets the column would otherwise
+have a screen saying "not decided" while the booking transaction turns people away.
+**Any new code that inserts a pooja directly must set `capacity_mode` itself.**
+
+`PUT /api/poojas/:id` applies a mode change to the event row and every slot in one
+transaction, refusing a limit below what is already booked. It only rewrites slots when
+the decision actually changed — the edit form posts the current mode back on every save,
+and a blind rewrite would flatten a single day's hand-adjusted count from
+`PUT /api/poojas/slots/:slotId`.
+
+Keep these four concepts distinct — only the first belongs to Phase 1: **registration
+capacity** (how many registrations a seva accepts) · **physical daily capacity** (how
+many can sit in the mandir that day) · **patla capacity** (seat entitlement within a
+yagna) · **sitting allocation** (who sits on which date).
+
+### Vocabulary: the trust's words ↔ the code's
+
+Use the schema's names in code and the trust's names in UI copy:
+
+| Trust's term | Code |
+|---|---|
+| Contribution / commitment | `sevarthi_bookings.amount_committed` |
+| Sevarthi Paid | `payments` where `payer_type = 'devotee'` |
+| Bappa Support / Bhuvaji | `payments` where `payer_type = 'bhuvaji'`; the planned share is `bhuvaji_planned_amount` |
+| Covered | sevarthi paid + bappa support |
+| Pending / Partial / Covered | `pending` / `partially_paid` / `paid` |
+| Bappa Supported, Excess Contribution | not statuses — separate indicators derived alongside the status |
+
+### Confirmed product decisions
+
+- **Mobile number is required to register a devotee** — the trust contacts people by
+  mobile, and it is the dedup key. Enforced by `assertMobile()` in `devotees.js`, but
+  only on the registration paths: `POST`/`PUT /api/devotees` and `POST /api/bookings`
+  (which passes `{ requireMobile: true }` to `upsertDevotee`). **Padhramni and walk-in
+  donations deliberately still accept a devotee with no number** — a visit has to be
+  recordable for someone nobody has a number for, and blocking that would stall
+  event-day entry. `UI.mobileError()` mirrors the rule client-side.
+  The check is loose on purpose (≥10 digits, so `+91`, dashes and landlines pass), and
+  the stored form is unchanged — whitespace-stripped only — so dedup matching against
+  existing rows behaves exactly as before. There is no `UNIQUE` index on
+  `devotees.mobile`: older databases may hold duplicates and the migration would fail.
+- The devotee form is **locked to its eight fields** (full name, mobile, city, state
+  defaulting to Gujarat, mul vatan, samaj, devotee category, note). **Do not add**
+  alternate mobile, full address or pincode — location is collected during padhramni,
+  and the devotee master is an identity record, not an address book.
+- One devotee, many registrations. Never duplicate a devotee row for a second seva.
+- Donations are a separate financial concept from seva contributions — don't merge their
+  totals or their screens.
+- All collection is cash today; `payments` has no method column. Keep the ledger
+  append-only, and add a method column only when another mode is actually introduced.
+- The existing modules (Dashboard, Mahotsav, Payments, Devotees, Padhramni, Calendar,
+  Donations, Invitation, Settings, Accounts & Access) each have working behaviour behind
+  them — read what a module does before changing or dropping it as part of UI work.
+
+### Phase 2 seam — do not build it now
+
+`pooja_events.coordinator_devotee_id` and the generic `lookups` table exist specifically
+so a later Phase 2 (capacity planner, sitting allocation, patla assignment,
+committee/management) can attach without a schema rewrite — both are otherwise unused
+today and should stay that way. Do not add daily-capacity, auto-allocation, preferred
+dates, bulk-move or optimization fields to the Phase 1 registration workflow; the schema
+only needs to stay capable of growing into them.

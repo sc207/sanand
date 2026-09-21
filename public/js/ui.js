@@ -62,6 +62,178 @@
       <p>${esc(msg)}</p>
     </div>`;
 
+  /* Mobile is required wherever a devotee is REGISTERED (the register
+     form, Add Sevarthi) — it is how the trust reaches them and how
+     duplicates are caught. Deliberately loose: ten digits or more, so a
+     +91 prefix or a landline passes. Mirrors assertMobile() in
+     server/routes/devotees.js, which is the real check — this one only
+     fails faster, without a round trip. */
+  function mobileError(value) {
+    const digits = String(value || '').replace(/\D/g, '');
+    if (!digits) return 'Mobile number is required';
+    if (digits.length < 10) return 'Enter the full mobile number (at least 10 digits)';
+    return null;
+  }
+
+  /* The one place the money on a booking is worked out. Every screen
+     reads these fields instead of doing its own arithmetic, so the
+     dashboard, the ledger, the payment list and the devotee profile can
+     never disagree. Outstanding and excess are per booking and never
+     cancel each other out. */
+  function coverage(row) {
+    const committed = Number(row.amount_committed || 0);
+    const bappa = Number(row.bappa_paid || 0);
+    const paid = Number(row.amount_paid || 0);
+    const devotee = row.devotee_paid === undefined ? Math.max(0, paid - bappa) : Number(row.devotee_paid || 0);
+    return {
+      committed,
+      devotee_paid: devotee,
+      bappa_paid: bappa,
+      covered: paid,
+      outstanding: Math.max(0, committed - paid),
+      excess: Math.max(0, paid - committed),
+      bappa_supported: bappa > 0,
+      /* What Bapa agreed to cover but has not been recorded against yet —
+         the planned figure on the booking, not money in hand. */
+      bappa_planned: Number(row.bhuvaji_planned_amount || 0),
+    };
+  }
+
+  /* Status badge plus the two indicators the trust asked to see
+     alongside it — deliberately NOT statuses of their own, so the
+     booking state machine in db.js stays as it is. */
+  function coverageBadges(row) {
+    if (row.status === 'cancelled') return statusBadge('cancelled');
+    const c = coverage(row);
+    return statusBadge(row.status) +
+      (c.bappa_supported ? ' <span class="badge badge-maroon">Bappa Supported</span>' : '') +
+      (c.excess > 0 ? ` <span class="badge badge-pending">Excess ${esc(money(c.excess))}</span>` : '');
+  }
+
+  /* "12 minutes ago" reads as activity; a raw 2026-09-21 21:38:02
+     reads as a log file. SQLite stamps local time with no zone, so the
+     space is swapped for a T to parse it as local rather than UTC.
+     Anything older than a week falls back to the date itself, which is
+     what someone actually wants at that distance. */
+  function ago(stamp) {
+    if (!stamp) return '';
+    const then = new Date(String(stamp).replace(' ', 'T'));
+    if (isNaN(then)) return String(stamp);
+    const secs = Math.floor((Date.now() - then.getTime()) / 1000);
+    if (secs < 45) return 'just now';
+    const mins = Math.round(secs / 60);
+    if (mins < 60) return `${mins} minute${mins === 1 ? '' : 's'} ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+    const days = Math.round(hrs / 24);
+    if (days <= 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+    return fmtDate(then.toLocaleDateString('en-CA'));
+  }
+
+  /* `ago` is for timestamps that have happened. A padhramni is a date
+     in the diary, so it needs the forward half too: how soon, in whole
+     calendar days, ignoring the clock. Returns a label and a tone the
+     caller can colour by. */
+  function whenDay(iso) {
+    if (!iso) return { days: null, label: TBD, tone: 'none' };
+    const [y, m, d] = String(iso).split('-').map(Number);
+    if (!y || !m || !d) return { days: null, label: esc(iso), tone: 'none' };
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    const days = Math.round((new Date(y, m - 1, d) - t) / 86400000);
+    if (days === 0) return { days, label: 'Today', tone: 'now' };
+    if (days === 1) return { days, label: 'Tomorrow', tone: 'soon' };
+    if (days === -1) return { days, label: 'Yesterday', tone: 'past' };
+    if (days > 0) return { days, label: `In ${days} days`, tone: days <= 7 ? 'soon' : 'later' };
+    return { days, label: `${-days} days ago`, tone: 'past' };
+  }
+
+  /* ---------- expandable rows ----------
+     A list row answers the one question its page exists for; anything
+     an operator only needs *after* choosing that row lives in a panel
+     underneath it. Keeps a long list scannable without throwing the
+     detail away. */
+  let expandSeq = 0;
+
+  /** summary + detail -> one row with a disclosure toggle. */
+  function expandableRow(summary, detail, opts) {
+    const o = opts || {};
+    const id = 'more-' + (++expandSeq);
+    return `<div class="list-row ${o.rowClass || ''}">
+      <div class="row-item ${o.itemClass || ''}" data-expand="${id}">
+        ${summary}
+        <button type="button" class="icon-btn row-expand" data-expand="${id}" aria-expanded="false"
+                aria-controls="${id}" title="${attr(o.label || 'More detail')}">
+          ${icon('chevron-right', 'ico-sm')}
+        </button>
+      </div>
+      <div class="row-more" id="${id}" hidden>${detail}</div>
+    </div>`;
+  }
+
+  /* The whole summary strip toggles, not just the chevron — a 24px
+     target in a list this long is a miss waiting to happen. The row's
+     own buttons (Collect, Profile) still do their own job, so a click
+     that started on one is left alone. */
+  function bindExpanders(root) {
+    if (!root) return;
+    root.querySelectorAll('.row-item[data-expand]').forEach((row) => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('button:not(.row-expand), a, input, select')) return;
+        const id = row.getAttribute('data-expand');
+        const panel = root.querySelector('#' + CSS.escape(id));
+        const btn = row.querySelector('.row-expand');
+        if (!panel) return;
+        const open = panel.hidden;
+        panel.hidden = !open;
+        if (btn) btn.setAttribute('aria-expanded', String(open));
+        row.closest('.list-row').classList.toggle('is-open', open);
+      });
+    });
+  }
+
+  /* ---------- pagination ----------
+     Shared by every long list (devotees, the sevarthi ledger, the
+     collections list, the audit trail) so they page identically.
+
+     The control uses `data-pager`, NOT `data-page`: app.js has a
+     document-wide click handler that treats any `data-page` element as
+     a nav link, so a pager built with it navigates away mid-click. */
+  const PAGE_SIZE = 25;
+
+  function paginate(items, page, size) {
+    const per = size || PAGE_SIZE;
+    const total = items.length;
+    const pages = Math.max(1, Math.ceil(total / per));
+    const p = Math.min(Math.max(1, Number(page) || 1), pages);   // clamp: a filter change can leave it past the end
+    const start = (p - 1) * per;
+    return {
+      slice: items.slice(start, start + per),
+      page: p, pages, total,
+      from: total ? start + 1 : 0,
+      to: Math.min(start + per, total),
+    };
+  }
+
+  /** Renders nothing when everything fits on one page. */
+  function pager(pg, noun) {
+    if (!pg || pg.pages <= 1) return '';
+    return `<div class="pager">
+      <button class="btn btn-outline mg-btn-xs" data-pager="prev" ${pg.page === 1 ? 'disabled' : ''}>
+        ${icon('chevron-left', 'ico-sm')} Previous</button>
+      <span class="pager-count">${esc(num(pg.from))}–${esc(num(pg.to))} of ${esc(num(pg.total))}${
+        noun ? ' ' + esc(noun) : ''}</span>
+      <button class="btn btn-outline mg-btn-xs" data-pager="next" ${pg.page === pg.pages ? 'disabled' : ''}>
+        Next ${icon('chevron-right', 'ico-sm')}</button>
+    </div>`;
+  }
+
+  /** `go(delta)` receives -1 or +1. */
+  function bindPager(root, go) {
+    if (!root) return;
+    root.querySelectorAll('[data-pager]').forEach((el) =>
+      el.addEventListener('click', () => go(el.getAttribute('data-pager') === 'next' ? 1 : -1)));
+  }
+
   function progressBar(done, total, okWhenFull) {
     if (total == null || total <= 0) return '';
     const pct = Math.min(100, Math.round((done / total) * 100));
@@ -74,7 +246,7 @@
     const map = {
       pending:        ['badge-pending', 'Pending'],
       partially_paid: ['badge-maroon', 'Part paid'],
-      paid:           ['badge-confirmed', 'Paid'],
+      paid:           ['badge-confirmed', 'Covered'],
       cancelled:      ['badge-cancelled', 'Cancelled'],
       requested:      ['badge-pending', 'Requested'],
       confirmed:      ['badge-maroon', 'Confirmed'],
@@ -105,32 +277,76 @@
   const sheetEl = () => document.getElementById('sheet');
   let lastFocused = null;
 
+  /* Esc and light dismiss close the dialog without going through
+     closeSheet(), so the cleanup hangs off the dialog's own event.
+     #sheet is markup above these script tags, but fall back to
+     DOMContentLoaded in case the load order ever changes. */
+  function bindSheetClose() {
+    const sheet = sheetEl();
+    if (sheet) sheet.addEventListener('close', teardownSheet);
+    else document.addEventListener('DOMContentLoaded', bindSheetClose, { once: true });
+  }
+  bindSheetClose();
+
+  /* One dialog serves the whole app. Opening while one is already open
+     REPLACES its contents rather than stacking — calling showModal() on
+     an open dialog would throw, and nested sheets were never the design
+     (see the note on bindLookupAdders). */
   function openSheet({ title, body, footer, onMount }) {
     const sheet = sheetEl();
-    lastFocused = document.activeElement;
+    if (!sheet.open) lastFocused = document.activeElement;
 
     document.getElementById('sheetTitle').textContent =
       (global.Lang ? Lang.t(title || '') : title) || '';
     document.getElementById('sheetBody').innerHTML = body || '';
     document.getElementById('sheetFoot').innerHTML = footer || '';
 
-    sheet.classList.add('active');          // sk shows the overlay with .active
-    document.body.style.overflow = 'hidden';
+    if (!sheet.open) {
+      /* showModal() is what gives the focus trap and Esc. If it is
+         unavailable or refuses, fall back to the plain overlay the app
+         used before rather than leaving the operator with no sheet. */
+      try {
+        if (typeof sheet.showModal === 'function') sheet.showModal();
+        else sheet.setAttribute('open', '');
+      } catch (e) {
+        sheet.setAttribute('open', '');
+      }
+      sheet.classList.add('active');             // styles.css shows it with .active
+      document.body.style.overflow = 'hidden';
+    }
+    sheet.scrollTop = 0;
+    const box = sheet.querySelector('.modal-box');
+    if (box) box.scrollTop = 0;
 
     if (typeof onMount === 'function') onMount(sheet);
     if (global.Lang) Lang.translateTree(sheet);
     bindTranslate(sheet);
 
-    const focusable = sheet.querySelector(
-      'input:not([type=hidden]), select, textarea, button:not(.icon-btn)'
-    );
+    /* Focus the first real field, not the ✕ in the header — the header
+       comes first in the DOM, so an unscoped query lands the operator
+       on the close button and they have to tab into the form before
+       they can type a name. */
+    const bodyEl = document.getElementById('sheetBody');
+    const focusable = (bodyEl && bodyEl.querySelector(
+      'input:not([type=hidden]):not([disabled]), select, textarea'
+    )) || sheet.querySelector('.modal-footer .btn');
     if (focusable) setTimeout(() => focusable.focus(), 60);
   }
 
   function closeSheet() {
     const sheet = sheetEl();
-    if (!sheet || !sheet.classList.contains('active')) return;
+    if (!sheet || !sheet.open) return;
+    sheet.close();            // 'close' fires, and teardown() below cleans up
+  }
+
+  /* Teardown lives on the dialog's own close event so that Esc, light
+     dismiss and closeSheet() all leave exactly the same state behind —
+     there is no path that skips the cleanup. */
+  function teardownSheet() {
+    const sheet = sheetEl();
+    if (!sheet) return;
     sheet.classList.remove('active');
+    sheet.removeAttribute('open');
     document.getElementById('sheetBody').innerHTML = '';
     document.getElementById('sheetFoot').innerHTML = '';
     document.body.style.overflow = '';
@@ -304,7 +520,7 @@
 
   const DV_ADD_FIELDS = () => `
     <input class="form-input" data-dv-new-name placeholder="Full name" style="margin-bottom:.4rem">
-    <input class="form-input" data-dv-new-mobile placeholder="Mobile no." inputmode="tel" style="margin-bottom:.4rem">
+    <input class="form-input" data-dv-new-mobile placeholder="Mobile no. (required)" inputmode="tel" style="margin-bottom:.4rem">
     <div class="btn-row">
       <button type="button" class="btn btn-outline mg-btn-xs" data-dv-cancel-new>Cancel</button>
       <button type="button" class="btn btn-primary mg-btn-xs" data-dv-save-new>Save &amp; select</button>
@@ -338,6 +554,8 @@
         const fname = box.querySelector('[data-dv-new-name]').value.trim();
         const mobile = box.querySelector('[data-dv-new-mobile]').value.trim();
         if (!fname) { toast('Enter a name', 'err'); return; }
+        const mobileMsg = mobileError(mobile);
+        if (mobileMsg) { toast(mobileMsg, 'err'); return; }
         e.currentTarget.disabled = true;
         try {
           const d = await API.post('/devotees', { full_name: fname, mobile });
@@ -460,6 +678,9 @@
     esc, attr, money, num, fmtDate, fmtDateLong, fmtRange, TBD,
     todayISO, monthISO, MONTHS, bindTranslate,
     icon, loading, empty, errorState, progressBar, statusBadge,
+    mobileError, coverage, coverageBadges, ago, whenDay,
+    PAGE_SIZE, paginate, pager, bindPager,
+    expandableRow, bindExpanders,
     toast, openSheet, closeSheet, confirmSheet,
     debounce, readForm, showFieldError, clearFieldErrors,
     devoteeField, devoteeMultiField, bindDevotees, multiIds,

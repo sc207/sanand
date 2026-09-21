@@ -31,25 +31,58 @@ router.get('/', (req, res) => {
   const { status, month, search, upcoming } = req.query;
   const where = [];
   const params = {};
-  if (status) { where.push(`status = @status`); params.status = status; }
-  if (month) { where.push(`substr(visit_date,1,7) = @month`); params.month = month; }
+  /* Qualified with v. because the join brings a second `mobile` and
+     `city` into scope. */
+  if (status) { where.push(`v.status = @status`); params.status = status; }
+  if (month) { where.push(`substr(v.visit_date,1,7) = @month`); params.month = month; }
   if (upcoming === '1') {
-    where.push(`visit_date >= date('now','localtime') AND status <> 'cancelled'`);
+    where.push(`v.visit_date >= date('now','localtime') AND v.status <> 'cancelled'`);
   }
   if (search) {
-    where.push(`(devotee_name LIKE @q OR mobile LIKE @q OR city LIKE @q OR address LIKE @q)`);
+    where.push(`(v.devotee_name LIKE @q OR v.mobile LIKE @q OR v.city LIKE @q
+                 OR v.address LIKE @q OR d.full_name LIKE @q OR d.mobile LIKE @q
+                 OR d.city LIKE @q)`);
     params.q = `%${String(search).trim()}%`;
   }
+
+  /* A visit only stores mobile/city when this particular padhramni is
+     somewhere other than the devotee's usual place. Picking a devotee
+     from the register and leaving those blank is the normal case, so
+     fall back to the register rather than showing a row with nothing
+     on it but a date. `visit_*` keeps the visit's own value, which is
+     what the edit form must not overwrite. */
   const rows = db.prepare(
-    `SELECT * FROM visits ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-     ORDER BY visit_date DESC, visit_time LIMIT 500`
+    `SELECT v.id, v.devotee_id, v.purpose, v.address, v.visit_date, v.visit_time,
+            v.status, v.notes, v.created_at, v.updated_at,
+            COALESCE(d.full_name, v.devotee_name) AS devotee_name,
+            COALESCE(v.mobile, d.mobile)          AS mobile,
+            COALESCE(v.city,   d.city)            AS city,
+            v.mobile AS visit_mobile, v.city AS visit_city,
+            d.state, d.mul_vatan,
+            (SELECT value FROM lookups WHERE id = d.samaj_id) AS samaj
+       FROM visits v LEFT JOIN devotees d ON d.id = v.devotee_id
+      ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+      ${/* A view of visits still to happen is a queue to work through,
+            so it reads soonest first. Completed visits, and "all", are
+            a record, so they read newest first. */''}
+      ORDER BY v.visit_date ${
+        upcoming === '1' || status === 'requested' || status === 'confirmed' ? 'ASC' : 'DESC'
+      }, v.visit_time
+      LIMIT 500`
   ).all(params);
   rows.forEach((r) => { r.escorts = escortsOf(r.id); });
   res.json(rows);
 });
 
 router.get('/:id', (req, res) => {
-  const row = db.prepare(`SELECT * FROM visits WHERE id = ?`).get(req.params.id);
+  /* The form edits the visit's own columns, so they come back raw —
+     the devotee's details ride alongside as placeholders, so an
+     operator can see what will be used without it being silently
+     copied onto the visit. */
+  const row = db.prepare(`
+    SELECT v.*, d.mobile AS devotee_mobile, d.city AS devotee_city
+      FROM visits v LEFT JOIN devotees d ON d.id = v.devotee_id
+     WHERE v.id = ?`).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   row.escorts = escortsOf(row.id);
   res.json(row);
