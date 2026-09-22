@@ -337,6 +337,20 @@ Easy to get wrong, and it changes what a "day" means:
   otherwise be executed as a formula when the file is opened.
   The PDF is the browser's own print engine via `openPrintDoc` — jsPDF/html2canvas need
   a CDN, so there is no other option offline, and none is needed.
+  **A sheet of paper is not a spreadsheet, and the printed copy says so.** A4 landscape
+  is about 277mm; the devotee register's seventeen columns wanted half as much again,
+  and an auto table layout cannot shrink below its min-content width, so the last
+  columns were simply cut off the page with nothing to say they existed. Three things
+  hold it together now, and all three are load-bearing: `table-layout: fixed` (the
+  colgroup decides the width, so the table can never exceed the page); a colgroup whose
+  weights are **measured from the widest unbreakable run in each column** rather than
+  hand-tuned (hand-tuned weights were always one dataset away from being a pixel too
+  narrow); and `print: false` on columns that stay in the CSV — the footer then names
+  them, so nobody reads the sheet as the whole record. Two rules inside that: `nowrap`
+  is decided **per cell, not per column** (`2027-02-04` must not break, but "Date to be
+  announced" shares that column and must), and it never applies to a *heading* — "Paid
+  by devotee" is a phrase that has to wrap, and forcing it onto one line ran it into the
+  next column.
   **The export doubles as a specification of what the page must show.** A column that
   carries a value the screen never displays is a gap between what the app knows and what
   it tells the operator, and comparing the two found four: the devotee's note existed
@@ -378,7 +392,12 @@ Easy to get wrong, and it changes what a "day" means:
   `bindDevotees` (devotee autocomplete), `bindTranslate` (the `data-translate` button),
   and formatting helpers (`money`, `fmtDate`, `statusBadge`, `progressBar`, `esc`, `attr`).
   All markup is built as template strings — **always** pass interpolated values through
-  `UI.esc()` (text) or `UI.attr()` (attribute values).
+  `UI.esc()` (text) or `UI.attr()` (attribute values). And **never put a backtick inside
+  one**, including in a CSS or JS comment: it ends the string there, and everything
+  after it parses as code. A backtick around a class name in a comment inside
+  `export.js`'s `PRINT_CSS` produced `ReferenceError: tight is not defined` at load and
+  took the whole `Export` module with it — `node --check` passes, because the file is
+  still valid JavaScript, just not the JavaScript you meant.
 - `forms.js` holds multi-step flows reachable from more than one place (`addSevarthi`,
   `addPayment`, `editBooking`, `cancelBooking`, `reassignBooking`, `bookingHistory`,
   quick-add menu, global search, lookup adders, user switcher) — kept separate from

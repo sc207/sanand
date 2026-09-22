@@ -51,7 +51,7 @@
     { key: 'purpose', label: 'Purpose',  value: (v) => v.purpose || '' },
     { key: 'escorts', label: 'Escort',   value: (v) => (v.escorts || []).map((e) => e.full_name).join(', ') },
     { key: 'status',  label: 'Status', nowrap: true, value: (v) => (v.status || '').replace(/^\w/, (c) => c.toUpperCase()) },
-    { key: 'notes',   label: 'Note',     value: (v) => v.notes || '' },
+    { key: 'notes',   label: 'Note', print: false, value: (v) => v.notes || '' },
   ];
 
   function exportSpec() {

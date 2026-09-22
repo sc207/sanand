@@ -99,6 +99,20 @@
     return esc(v == null ? '' : String(v));
   }
 
+  /* A4 landscape at these margins is about 277mm of printable width. A
+     table with 15–17 columns wants half as much again, and a normal
+     (auto) table layout cannot shrink below its min-content width — so
+     it simply ran off the right edge and the last columns were cut off
+     the page with nothing to say they existed.
+
+     Three things together fix it, and all three are needed:
+       1. `table-layout: fixed` — the width is decided by the colgroup,
+          not the content, so the table can never exceed the page.
+       2. cells wrap. Under a fixed layout a `nowrap` cell still spills
+          out of its own column, so wide tables drop nowrap and break
+          long values instead.
+       3. the type scales down with the column count, so wrapping does
+          not turn every row into four lines. */
   const PRINT_CSS = `
   @page { size: A4 landscape; margin: 12mm 10mm; }
   .ex-doc { padding: 0; }
@@ -109,15 +123,33 @@
   .ex-meta { display: flex; flex-wrap: wrap; gap: .3rem 1.4rem; margin: .55rem 0 0;
              font-size: .78rem; color: var(--dark-brown); }
   .ex-meta b { color: var(--primary-maroon); }
-  table.ex { width: 100%; border-collapse: collapse; font-size: .76rem; }
-  table.ex th {
-    text-align: left; padding: .4rem .5rem; background: var(--warm-ivory);
-    border-bottom: 1.5px solid var(--warm-border); font-weight: 700; color: var(--dark-brown);
-    white-space: nowrap;
+  table.ex {
+    width: 100%; table-layout: fixed; border-collapse: collapse;
+    font-size: var(--ex-fs, .76rem);
   }
-  table.ex td { padding: .34rem .5rem; border-bottom: 1px solid var(--warm-border); vertical-align: top; }
-  table.ex td.n, table.ex th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  table.ex td.w, table.ex th.w { white-space: nowrap; }
+  table.ex th {
+    text-align: left; padding: .4rem var(--ex-pad, .5rem); background: var(--warm-ivory);
+    border-bottom: 1.5px solid var(--warm-border); font-weight: 700; color: var(--dark-brown);
+  }
+  table.ex td {
+    padding: .34rem var(--ex-pad, .5rem); border-bottom: 1px solid var(--warm-border);
+    vertical-align: top;
+  }
+  /* Free text may break mid-word to fit its column. Numbers and dates
+     may NOT: an amount split as 11,00,0 / 00 across two lines is worse
+     than not printing it, so those keep nowrap however tight it gets
+     and the colgroup gives them room instead.
+     (No backticks in here: this whole block is a template literal, and
+     one inside a CSS comment ends the string. That is how this rule
+     broke the first time — everything after it parsed as JS.) */
+  table.ex td { overflow-wrap: anywhere; }
+  table.ex td.n, table.ex th.n { text-align: right; }
+  /* nowrap is for the VALUES, never the headings: "Paid by devotee" is
+     a phrase and must be allowed onto a second line, or it runs into
+     the next column's heading. */
+  table.ex td.n { font-variant-numeric: tabular-nums; white-space: nowrap; overflow-wrap: normal; }
+  table.ex td.w { white-space: nowrap; overflow-wrap: normal; }
+  table.ex th { overflow-wrap: anywhere; word-break: normal; hyphens: none; }
   table.ex tbody tr:nth-child(even) td { background: #FCF8F0; }
   .ex-foot { margin-top: .8rem; font-size: .72rem; color: var(--muted-brown);
              display: flex; justify-content: space-between; gap: 1rem; }
@@ -128,12 +160,67 @@
   function pdf(opt) {
     const rows = opt.rows || [];
     if (!rows.length) { UI.toast('Nothing to print in this view.', 'err'); return; }
-    const cols = opt.columns;
+
+    /* A sheet of paper is not a spreadsheet. The devotee register has
+       seventeen columns; on A4 landscape that is about 60px each, which
+       is narrower than a name or an amount, and the result fits only by
+       becoming unreadable. Columns marked `print: false` stay in the
+       CSV and leave the printed copy — and the sheet says so, so nobody
+       reads it as the whole record. */
+    const cols = opt.columns.filter((c) => c.print !== false);
+    const dropped = opt.columns.filter((c) => c.print === false).map((c) => c.label);
     const numeric = (c) => c.type === 'money' || c.type === 'num';
     /* Dates and short labels must not break across lines — "2027-02-" on
        one row and "04" on the next is unreadable on a printed sheet.
        Long free text (address, note, seva name) is left to wrap. */
-    const cls = (c) => numeric(c) ? 'n' : (c.type === 'date' || c.nowrap) ? 'w' : '';
+    /* nowrap is decided per cell, not per column. "2027-02-04" must not
+       break; "Date to be announced" lives in the same column and must,
+       or it runs straight over the next one. A value with no space is
+       an atom; anything else is a phrase. */
+    const headCls = (c) => numeric(c) ? 'n' : '';
+    const cls = (c, r) => {
+      if (numeric(c)) return 'n';
+      if (!(c.type === 'date' || c.nowrap)) return '';
+      const v = String(c.value(r) == null ? '' : c.value(r));
+      return /\s/.test(v) ? '' : 'w';
+    };
+
+    /* Under a fixed layout every column would otherwise get an equal
+       share — starving a name to give a one-digit count the same width.
+       Each column gets a base weight for the kind of thing it holds,
+       raised to fit its widest *unbreakable* run: the whole value in a
+       nowrap column, the longest word elsewhere. Hand-tuned weights
+       were always one dataset away from being a pixel too narrow;
+       measuring the content is self-correcting. */
+    const WEIGHT = { num: 0.6, money: 0.95, date: 0.85 };
+    const atomOf = (c) => {
+      const unbreakable = numeric(c) || c.type === 'date' || c.nowrap;
+      let longest = String(c.label || '').split(/\s+/)
+        .reduce((a, w) => Math.max(a, w.length), 0);
+      for (const r of rows) {
+        const v = String(cell(c, r)).replace(/<[^>]*>/g, '');
+        const n = unbreakable ? v.length
+          : v.split(/\s+/).reduce((a, w) => Math.max(a, w.length), 0);
+        if (n > longest) longest = n;
+      }
+      return longest;
+    };
+    const weightOf = (c) => {
+      const base = c.weight || WEIGHT[c.type] || (c.nowrap ? 1 : 1.35);
+      // ~10 characters per unit of weight, plus the cell's own padding.
+      return Math.max(base, atomOf(c) / 10 + 0.15);
+    };
+    const totalWeight = cols.reduce((a, c) => a + weightOf(c), 0);
+    const colgroup = `<colgroup>${cols.map((c) =>
+      `<col style="width:${(weightOf(c) / totalWeight * 100).toFixed(3)}%">`).join('')}</colgroup>`;
+
+    /* Shrink the type as the table gets busier, so wrapping does not
+       turn every row into a paragraph. 9 columns keeps the comfortable
+       size; 17 lands near .6rem, which is still readable in print. */
+    const n = cols.length;
+    const tight = n > 10;
+    const fs = n <= 9 ? 0.76 : Math.max(0.6, 0.76 - (n - 9) * 0.02);
+    const pad = tight ? 0.32 : 0.5;
 
     const inner = `
       <div class="ex-doc">
@@ -145,12 +232,14 @@
               `<span><b>${esc(k)}:</b> ${esc(v)}</span>`).join('')}
           </div>
         </div>
-        <table class="ex">
+        <table class="ex ${tight ? 'ex-tight' : ''}"
+               style="--ex-fs:${fs}rem;--ex-pad:${pad}rem">
+          ${colgroup}
           <thead><tr>${cols.map((c) =>
-            `<th class="${cls(c)}">${esc(c.label)}</th>`).join('')}</tr></thead>
+            `<th class="${headCls(c)}">${esc(c.label)}</th>`).join('')}</tr></thead>
           <tbody>
             ${rows.map((r) => `<tr>${cols.map((c) =>
-              `<td class="${cls(c)}">${cell(c, r)}</td>`).join('')}</tr>`).join('')}
+              `<td class="${cls(c, r)}">${cell(c, r)}</td>`).join('')}</tr>`).join('')}
           </tbody>
           ${opt.totals ? `<tfoot><tr>${cols.map((c) => {
             const t = opt.totals[c.key];
@@ -160,13 +249,15 @@
             const text = t === undefined || t === null ? ''
               : typeof t === 'number' ? (c.type === 'money' ? money(t) : num(t))
               : String(t);
-            return `<td class="${cls(c)}" style="font-weight:800;border-top:2px solid var(--warm-border)">${
+            return `<td class="${headCls(c)}" style="font-weight:800;border-top:2px solid var(--warm-border)">${
               esc(text)}</td>`;
           }).join('')}</tr></tfoot>` : ''}
         </table>
         <div class="ex-foot">
           <span>${esc(opt.footer || 'Shri Vihat Meldi Dham — Sanand')}</span>
-          <span>${esc(num(rows.length))} row${rows.length === 1 ? '' : 's'}</span>
+          <span>${dropped.length
+            ? esc('Also in the Excel export: ' + dropped.join(', ')) + ' · '
+            : ''}${esc(num(rows.length))} row${rows.length === 1 ? '' : 's'}</span>
         </div>
       </div>`;
 

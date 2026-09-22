@@ -75,13 +75,13 @@
     { key: 'committed', label: 'Contribution', type: 'money', value: (b) => UI.coverage(b).committed },
     { key: 'devotee',  label: 'Paid by devotee', type: 'money', value: (b) => UI.coverage(b).devotee_paid },
     { key: 'bappa',    label: "Bapa's support",  type: 'money', value: (b) => UI.coverage(b).bappa_paid },
-    { key: 'covered',  label: 'Covered',      type: 'money', value: (b) => UI.coverage(b).covered },
+    { key: 'covered',  label: 'Covered', print: false, type: 'money', value: (b) => UI.coverage(b).covered },
     { key: 'outstanding', label: 'Outstanding', type: 'money', value: (b) => UI.coverage(b).outstanding },
-    { key: 'excess',   label: 'Excess',       type: 'money', value: (b) => UI.coverage(b).excess },
+    { key: 'excess',   label: 'Excess', print: false, type: 'money', value: (b) => UI.coverage(b).excess },
     { key: 'status',   label: 'Status', nowrap: true, value: (b) => STATUS_WORD[b.status] || b.status },
-    { key: 'lastpaid', label: 'Last paid', type: 'date', value: (b) => b.last_payment_date || '' },
-    { key: 'entries',  label: 'Payments',     type: 'num', value: (b) => b.payment_count || 0 },
-    { key: 'registered', label: 'Registered', type: 'date', value: (b) => String(b.created_at || '').slice(0, 10) },
+    { key: 'lastpaid', label: 'Last paid', print: false, type: 'date', value: (b) => b.last_payment_date || '' },
+    { key: 'entries',  label: 'Payments', print: false, type: 'num', value: (b) => b.payment_count || 0 },
+    { key: 'registered', label: 'Registered', print: false, type: 'date', value: (b) => String(b.created_at || '').slice(0, 10) },
   ];
 
   const STATUS_WORD = { pending: 'Pending', partially_paid: 'Part paid',

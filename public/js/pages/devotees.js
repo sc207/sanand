@@ -39,8 +39,8 @@
     { key: 'name',      label: 'Name',        value: (d) => d.full_name },
     { key: 'mobile',    label: 'Mobile', nowrap: true, value: (d) => d.mobile || '' },
     { key: 'city',      label: 'City',        value: (d) => d.city || '' },
-    { key: 'state',     label: 'State',       value: (d) => d.state || '' },
-    { key: 'mul',       label: 'Mul vatan',   value: (d) => d.mul_vatan || '' },
+    { key: 'state',     label: 'State', print: false, value: (d) => d.state || '' },
+    { key: 'mul',       label: 'Mul vatan', print: false, value: (d) => d.mul_vatan || '' },
     { key: 'samaj',     label: 'Samaj',       value: (d) => d.samaj || '' },
     { key: 'category',  label: 'Category',    value: (d) => d.category || '' },
     { key: 'seva',      label: 'Seva',        type: 'num',   value: (d) => d.booking_count || 0 },
@@ -48,11 +48,11 @@
     { key: 'paid',      label: 'Contributed', type: 'money', value: (d) => d.total_paid || 0 },
     { key: 'bappa',     label: "Bapa's support", type: 'money', value: (d) => d.bappa_paid || 0 },
     { key: 'outstanding', label: 'Outstanding', type: 'money', value: (d) => d.outstanding || 0 },
-    { key: 'donations', label: 'Donations',   type: 'money', value: (d) => d.donation_total || 0 },
-    { key: 'visits',    label: 'Padhramni',   type: 'num',   value: (d) => d.visit_count || 0 },
-    { key: 'cancelled', label: 'Cancelled seva', type: 'num', value: (d) => d.cancelled_count || 0 },
-    { key: 'since',     label: 'On register since', type: 'date', value: (d) => String(d.created_at || '').slice(0, 10) },
-    { key: 'notes',     label: 'Note',        value: (d) => d.notes || '' },
+    { key: 'donations', label: 'Donations', print: false, type: 'money', value: (d) => d.donation_total || 0 },
+    { key: 'visits',    label: 'Padhramni', print: false, type: 'num',   value: (d) => d.visit_count || 0 },
+    { key: 'cancelled', label: 'Cancelled seva', print: false, type: 'num', value: (d) => d.cancelled_count || 0 },
+    { key: 'since',     label: 'On register since', print: false, type: 'date', value: (d) => String(d.created_at || '').slice(0, 10) },
+    { key: 'notes',     label: 'Note', print: false, value: (d) => d.notes || '' },
   ];
 
   function exportSpec() {
