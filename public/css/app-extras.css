@@ -4,6 +4,17 @@
    else comes from styles.css unchanged.
    ============================================================ */
 
+/* Any class that sets `display` outranks the UA's own
+   `[hidden] { display: none }`, so `el.hidden = true` set the attribute
+   and changed nothing on screen. It has caught this codebase three
+   times — `.annc-overlay` and `.sheet` each patched it for themselves,
+   then `.row-more`, then `.form-group` on the split-payment fields, in
+   every case rendering the "hidden" block alongside the visible one.
+   Pin it down once, here, ahead of everything else. Anything that must
+   stay visible while carrying the attribute has to say so explicitly
+   (`:not([hidden])`, as `.dv-inline-form` does). */
+[hidden] { display: none !important; }
+
 /* Line icons replace the original's emoji, using the sprite in
    /assets/icons.svg. Sized to match the old emoji slots. */
 .ico { width: 19px; height: 19px; flex-shrink: 0; display: block; }
@@ -854,14 +865,10 @@ dialog#sheet::backdrop { background: transparent; }
 .row-expand:hover { color: var(--primary-maroon); }
 .list-row.is-open .row-expand { transform: rotate(90deg); color: var(--primary-maroon); }
 
-/* `display: flex` on a class beats the UA's `[hidden] { display: none }`,
-   which silently left every panel open — the toggle worked, nothing
-   moved. Anything given a display here must re-assert the hidden case. */
 .row-more {
   display: flex; flex-direction: column; gap: .55rem;
   padding: 0 1.5rem 1.15rem 1.5rem;
 }
-.row-more[hidden] { display: none; }
 
 /* The one figure that survives collapse, set beside the primary action
    so the pair reads as "this much is owed → do this about it". */

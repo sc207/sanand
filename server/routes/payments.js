@@ -98,37 +98,84 @@ router.get('/outstanding', (req, res) => {
   `).all(params));
 });
 
+/** Record cash against a booking.
+ *
+ *  One handover at the counter is often split — the sevarthi pays part
+ *  and Bapa covers the rest — and that is two ledger rows, because
+ *  `payer_type` lives on the row and the two totals must never be
+ *  merged. Sending them as two requests left the booking half-recorded
+ *  when the second failed, so both forms are accepted here and written
+ *  inside one transaction:
+ *
+ *    single: { amount, payer_type }
+ *    split:  { devotee_amount, bhuvaji_amount }
+ *
+ *  Each row stays separately correctable through PUT /payments/:id, and
+ *  each is audited on its own, so the trail reads the same whether the
+ *  money arrived in one visit or two.
+ */
 router.post('/', (req, res) => {
   const b = req.body;
   const booking = db.prepare(`SELECT * FROM sevarthi_bookings WHERE id = ?`).get(b.booking_id);
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
   if (booking.status === 'cancelled') return res.status(400).json({ error: 'This booking is cancelled' });
 
-  const amount = Number(b.amount || 0);
-  if (!(amount > 0)) return res.status(400).json({ error: 'Enter an amount greater than zero' });
+  const isSplit = b.devotee_amount !== undefined || b.bhuvaji_amount !== undefined;
+  const entries = [];
 
-  const info = db.prepare(`
-    INSERT INTO payments (booking_id, amount, payer_type, payment_date, receipt_no, notes, recorded_by)
-    VALUES (@booking_id, @amount, @payer_type, @payment_date, @receipt_no, @notes, @recorded_by)
-  `).run({
+  if (isSplit) {
+    const fromDevotee = Number(b.devotee_amount || 0);
+    const fromBapa = Number(b.bhuvaji_amount || 0);
+    if (fromDevotee < 0 || fromBapa < 0) {
+      return res.status(400).json({ error: 'An amount cannot be negative' });
+    }
+    if (!(fromDevotee > 0) && !(fromBapa > 0)) {
+      return res.status(400).json({ error: 'Enter an amount for the devotee, for Bapa, or both' });
+    }
+    // A zero side is simply left out — never written as a ₹0 ledger row.
+    if (fromDevotee > 0) entries.push({ amount: fromDevotee, payer_type: 'devotee' });
+    if (fromBapa > 0) entries.push({ amount: fromBapa, payer_type: 'bhuvaji' });
+  } else {
+    const amount = Number(b.amount || 0);
+    if (!(amount > 0)) return res.status(400).json({ error: 'Enter an amount greater than zero' });
+    entries.push({ amount, payer_type: b.payer_type === 'bhuvaji' ? 'bhuvaji' : 'devotee' });
+  }
+
+  const common = {
     booking_id: booking.id,
-    amount,
-    payer_type: b.payer_type === 'bhuvaji' ? 'bhuvaji' : 'devotee',
     payment_date: b.payment_date || todayLocal(),
     receipt_no: (b.receipt_no || '').trim() || null,
     notes: (b.notes || '').trim() || null,
     recorded_by: req.get('X-User-Name') ? decodeURIComponent(req.get('X-User-Name')) : 'Unknown',
-  });
+  };
+
+  const insert = db.prepare(`
+    INSERT INTO payments (booking_id, amount, payer_type, payment_date, receipt_no, notes, recorded_by)
+    VALUES (@booking_id, @amount, @payer_type, @payment_date, @receipt_no, @notes, @recorded_by)
+  `);
+
+  /* Both rows land or neither does — a split that wrote only the
+     devotee's half would understate what the trust actually holds. */
+  const ids = db.transaction(() =>
+    entries.map((e) => Number(insert.run({ ...common, ...e }).lastInsertRowid)))();
 
   const updated = refreshStatus(booking.id);
-  const row = db.prepare(PAYMENT_SELECT + ` WHERE p.id = ?`).get(info.lastInsertRowid);
-  log(req, {
-    action: 'payment', entity: 'payment', entityId: Number(info.lastInsertRowid),
-    summary: `₹${amount} cash received from ${row.payer_type === 'bhuvaji' ? 'Bapa (on behalf of ' + row.full_name + ')' : row.full_name}` +
-             ` — ${row.pooja_name} ${row.slot_date} [${updated.status}]`,
-    details: { amount, payer_type: row.payer_type, booking_id: booking.id },
+  const rows = ids.map((id) => db.prepare(PAYMENT_SELECT + ` WHERE p.id = ?`).get(id));
+
+  rows.forEach((row) => {
+    log(req, {
+      action: 'payment', entity: 'payment', entityId: row.id,
+      summary: `₹${row.amount} cash received from ` +
+               `${row.payer_type === 'bhuvaji' ? 'Bapa (on behalf of ' + row.full_name + ')' : row.full_name}` +
+               `${rows.length > 1 ? ' [split payment]' : ''}` +
+               ` — ${row.pooja_name} ${row.slot_date} [${updated.status}]`,
+      details: { amount: row.amount, payer_type: row.payer_type, booking_id: booking.id,
+                 split: rows.length > 1 },
+    });
   });
-  res.status(201).json({ payment: row, booking_status: updated.status });
+
+  // `payment` is kept for callers that expect a single row.
+  res.status(201).json({ payment: rows[0], payments: rows, booking_status: updated.status });
 });
 
 /** Correct a payment entry. The ledger is append-only in spirit — the

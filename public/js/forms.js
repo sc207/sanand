@@ -558,6 +558,14 @@
     const due = Math.max(0, b.amount_committed - b.amount_paid);
     const asBapa = !!(preset && preset.payer_type === 'bhuvaji');
 
+    /* One handover is often split — the sevarthi hands over part and
+       Bapa covers the rest. Prefill the split from what Bapa actually
+       agreed to: whatever is left of Bapa's promised share, with the
+       remainder of the due falling to the devotee. */
+    const bapaOwes = Math.max(0, (b.bhuvaji_planned_amount || 0) - (b.bappa_paid || 0));
+    const splitBapa = Math.min(bapaOwes, due);
+    const splitDevotee = Math.max(0, due - splitBapa);
+
     openSheet({
       title: asBapa ? 'Add Bapa Support' : 'Record Payment',
       body: `
@@ -576,18 +584,42 @@
         </div></div>
 
         <form id="payForm" novalidate>
-          <div class="form-group">
-            <label class="form-label req" for="f_amount">Amount Received</label>
-            <input class="form-input" id="f_amount" name="amount" type="number" min="1" step="1" value="${attr(due || '')}" inputmode="numeric">
-          </div>
+          ${/* Who paid comes first now, because it decides whether the
+                operator types one amount or two. */''}
           <div class="form-group">
             <label class="form-label">Paid by</label>
             <div class="btn-row">
-              <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
+              <label class="badge pay-payer" style="padding:.5rem .8rem;cursor:pointer">
                 <input type="radio" name="payer_type" value="devotee" ${asBapa ? '' : 'checked'} style="width:auto;min-height:0;margin-right:.35rem"> Devotee</label>
-              <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
+              <label class="badge pay-payer" style="padding:.5rem .8rem;cursor:pointer">
                 <input type="radio" name="payer_type" value="bhuvaji" ${asBapa ? 'checked' : ''} style="width:auto;min-height:0;margin-right:.35rem"> Bapa</label>
+              <label class="badge pay-payer" style="padding:.5rem .8rem;cursor:pointer">
+                <input type="radio" name="payer_type" value="both" style="width:auto;min-height:0;margin-right:.35rem"> Both</label>
             </div>
+          </div>
+
+          <div class="form-group" id="paySingle">
+            <label class="form-label req" for="f_amount">Amount Received</label>
+            <input class="form-input" id="f_amount" name="amount" type="number" min="1" step="1" value="${attr(due || '')}" inputmode="numeric">
+          </div>
+
+          ${/* Two rows in the ledger, one handover at the counter. The
+                totals stay separate because payer_type lives on the row
+                — they are never added together and stored. */''}
+          <div id="paySplit" hidden>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="f_devotee_amount">From devotee</label>
+                <input class="form-input" id="f_devotee_amount" name="devotee_amount" type="number"
+                       min="0" step="1" value="${attr(splitDevotee || '')}" inputmode="numeric">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="f_bhuvaji_amount">From Bapa</label>
+                <input class="form-input" id="f_bhuvaji_amount" name="bhuvaji_amount" type="number"
+                       min="0" step="1" value="${attr(splitBapa || '')}" inputmode="numeric">
+              </div>
+            </div>
+            <p class="small" id="paySplitTotal" style="margin:-.35rem 0 .9rem"></p>
           </div>
           <div class="form-row">
             <div class="form-group"><label class="form-label" for="f_payment_date">Date</label>
@@ -603,18 +635,78 @@
         <button class="btn btn-primary" id="paySave">Save Payment</button>`,
       onMount(sheet) {
         sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
+
+        const form = document.getElementById('payForm');
+        const single = sheet.querySelector('#paySingle');
+        const split = sheet.querySelector('#paySplit');
+        const splitTotal = sheet.querySelector('#paySplitTotal');
+        const payerOf = () => (form.querySelector('[name="payer_type"]:checked') || {}).value || 'devotee';
+
+        /* The split's running total is shown against what is still due,
+           because the two halves are typed independently and it is easy
+           to leave a gap — or go over — without noticing. */
+        function paintTotal() {
+          const d = Number(document.getElementById('f_devotee_amount').value || 0);
+          const p = Number(document.getElementById('f_bhuvaji_amount').value || 0);
+          const total = d + p;
+          const over = total - due;
+          splitTotal.innerHTML = !total
+            ? '<span class="muted">Enter what each side is paying.</span>'
+            : `Recording <strong>${esc(money(total))}</strong> in two entries` +
+              (over > 0 ? ` — <span style="color:var(--warning)">${esc(money(over))} above what is due</span>`
+               : over < 0 ? ` — <span class="muted">${esc(money(-over))} would still be due</span>`
+               : ' — <span style="color:var(--success)">settles this seva in full</span>');
+        }
+
+        function applyMode() {
+          const both = payerOf() === 'both';
+          single.hidden = both;
+          split.hidden = !both;
+          if (both) paintTotal();
+        }
+        form.querySelectorAll('[name="payer_type"]').forEach((r) =>
+          r.addEventListener('change', applyMode));
+        ['f_devotee_amount', 'f_bhuvaji_amount'].forEach((id) =>
+          document.getElementById(id).addEventListener('input', paintTotal));
+        applyMode();
+
         sheet.querySelector('#paySave').addEventListener('click', async (e) => {
-          const form = document.getElementById('payForm');
           clearFieldErrors(form);
           const data = readForm(form);
-          if (!(Number(data.amount) > 0)) return showFieldError(form, 'amount', 'Enter an amount');
+          const both = data.payer_type === 'both';
+
+          let body;
+          let recorded;
+          if (both) {
+            const d = Number(data.devotee_amount || 0);
+            const p = Number(data.bhuvaji_amount || 0);
+            if (d < 0 || p < 0) {
+              return showFieldError(form, d < 0 ? 'devotee_amount' : 'bhuvaji_amount',
+                'An amount cannot be negative');
+            }
+            if (!(d > 0) && !(p > 0)) {
+              return showFieldError(form, 'devotee_amount', 'Enter at least one amount');
+            }
+            /* payer_type is per ledger row on the server, so it is not
+               sent — the two amounts say who paid what. */
+            const { payer_type, amount, ...rest } = data;
+            body = { booking_id: bookingId, ...rest };
+            recorded = d + p;
+          } else {
+            if (!(Number(data.amount) > 0)) return showFieldError(form, 'amount', 'Enter an amount');
+            const { devotee_amount, bhuvaji_amount, ...rest } = data;
+            body = { booking_id: bookingId, ...rest };
+            recorded = Number(data.amount);
+          }
 
           e.currentTarget.disabled = true;
           e.currentTarget.textContent = 'Saving…';
           try {
-            const res = await API.post('/payments', { booking_id: bookingId, ...data });
+            const res = await API.post('/payments', body);
             closeSheet();
-            toast(`${money(data.amount)} recorded — ${res.booking_status.replace('_', ' ')}`, 'ok');
+            const n = (res.payments || [res.payment]).length;
+            toast(`${money(recorded)} recorded${n > 1 ? ' in 2 entries' : ''}` +
+                  ` — ${res.booking_status.replace('_', ' ')}`, 'ok');
             if (typeof refreshPage === 'function') refreshPage();
           } catch (err) {
             e.currentTarget.disabled = false;

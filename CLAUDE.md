@@ -171,7 +171,7 @@ unless explicitly asked — don't bolt on an auth system as a side effect of oth
 | `/api/devotees` | `GET /` · `GET /:id` (profile: bookings + donations) · `POST /` (upsert by mobile) · `PUT /:id` |
 | `/api/poojas` | `GET /categories` · `GET /` · `GET /:id` (slots + FIFO ledger) · `POST /` · `PUT /:id` · `PUT /:id/dates` · `PUT /:id/dates/clear` · `PUT /slots/:slotId` · `DELETE /:id` |
 | `/api/bookings` | `GET /` · `GET /:id` · `POST /` · `PUT /:id` · `POST /:id/cancel` · `POST /:id/reassign` |
-| `/api/payments` | `GET /` · `GET /by-day` · `GET /outstanding` · `POST /` · `PUT /:id` · `DELETE /:id` |
+| `/api/payments` | `GET /` · `GET /by-day` · `GET /outstanding` · `POST /` (single **or** split) · `PUT /:id` · `DELETE /:id` |
 | `/api/donations` | `GET /` · `POST /` · `PUT /:id` · `DELETE /:id` |
 | `/api/visits` | list / create / update / delete |
 | `/api` (`misc.js`) | `GET /dashboard` · `GET /calendar` · `GET`/`PUT` `/settings` · `GET`/`POST`/`PUT` `/users` · `GET /audit` · `GET /translate/status` · `POST /translate` · `POST /translate/warmup` |
@@ -259,9 +259,15 @@ Easy to get wrong, and it changes what a "day" means:
   The whole summary strip toggles, not just the chevron; `bindExpanders` ignores clicks
   that started on a `button`/`a`/`input`/`select` so row actions still act. Panels get
   unique generated ids, so re-bind after every repaint (a page change, a re-sort).
-  **Trap:** `.row-more` sets `display: flex`, which beats the UA's `[hidden]
-  { display: none }` — every panel rendered open while the toggle silently worked.
-  Any class that gives a hideable element a `display` must re-assert `[hidden]`.
+- **`[hidden] { display: none !important }` is set once at the top of `app-extras.css`,
+  and must stay there.** Any class that sets `display` outranks the UA's own `[hidden]`
+  rule, so `el.hidden = true` sets the attribute and changes nothing on screen — the
+  "hidden" block renders alongside the visible one and the toggle looks broken for no
+  reason a console would show. This caught the codebase four times before the rule went
+  in (`.annc-overlay` and `.sheet` each patched it for themselves, then `.row-more`,
+  then `.form-group` on the split-payment fields). Anything that must stay visible while
+  carrying the attribute has to say so explicitly, the way `.dv-inline-form:not([hidden])`
+  does. A toggle that "does nothing" is almost always this.
 - **Row anatomy for list pages** (`.fig-band` + `.fig`/`.fig-k`/`.fig-v`, `.collect-meta`,
   `.collect-when`, `.lead-fig`/`.lead-k`/`.lead-v`, in `app-extras.css`): a title line, a
   wrapping meta line, a tinted band of *labelled* figure cells, then when it happened.
@@ -423,6 +429,27 @@ mistyped payment becomes uncorrectable.
 Status (`pending`/`partially_paid`/`paid`) is the booking's own; *Covered*, *Bappa
 supported* and *Excess* are derived per booking through `UI.coverage`, which is why
 they are filters rather than statuses.
+
+**One handover is often split** — the sevarthi hands over part and Bapa covers the
+rest — and that is **two ledger rows**, because `payer_type` lives on the row and the
+two totals must never be merged into one. `POST /api/payments` therefore takes either
+shape, and writes both rows in a single `db.transaction()` so a split can never land
+half-recorded:
+
+```
+single: { booking_id, amount, payer_type }
+split:  { booking_id, devotee_amount, bhuvaji_amount }      -- a zero side is omitted,
+                                                            -- never written as a ₹0 row
+```
+
+It returns `{ payment, payments[], booking_status }`; `payment` is the first row, kept
+for callers that expect one. Each row is audited separately and stays separately
+correctable through `PUT /api/payments/:id`, so the trail reads the same whether the
+money arrived in one visit or two. In the form (`Forms.paymentForm`) "Paid by" is
+Devotee / Bapa / **Both**, and Both swaps the single amount for two, prefilled from what
+Bapa still owes of `bhuvaji_planned_amount` with the remainder of the due falling to the
+devotee. Don't collapse this back to one amount plus a payer flag — that is what forced
+the operator to save twice.
 
 There is deliberately **no date filter** on this page — one was built and then removed
 at the trust's request. If it is asked for again, note that "filter by date" has two
