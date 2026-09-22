@@ -406,6 +406,21 @@ Easy to get wrong, and it changes what a "day" means:
   so printed output matches the screen. It takes `{ title, wrapClass, inner, css }` —
   the same shape the portal's `printInvitationHTML` uses, which is why that print
   pipeline ported over unchanged.
+  **It must undo the app shell's geometry, and that is not optional.** `styles.css`
+  opens with `html, body { height: 100%; max-width: 100vw; overflow-x: hidden }` — right
+  for an app shell, ruinous once the same sheet is linked into a print window:
+  `height: 100%` is exactly one page box, so everything past the first page was clipped
+  and Chrome reported "Total: 1 page" however many rows there were. A 50-row payments
+  export printed as 1 page instead of 5, and the *invitation* was silently broken the
+  same way — a whole samaj's cards came out as a single card. `openPrintDoc` now resets
+  height/max-width/overflow before anything else, in both screen and print media.
+  The viewport units are reset with it, so a print window opened from a phone does not
+  size itself from that phone: the same report must produce the same PDF on any device,
+  which `pdfparity.js` checks by rendering at 390 / 820 / 1440 and comparing page count,
+  row count and laid-out height.
+  Diagnosing this needs `Page.printToPDF` over CDP and a count of `/Type /Pages`, not
+  the DOM — the clipping is invisible to `scrollHeight` in screen media, and the only
+  honest question is how many pages the PDF actually has.
 - `pages/invitation.js` is the **universal (combined) invitation**, ported from the
   portal's `public/js/invite-ui.js`: tick any number of poojas and it builds one
   certificate-grade A5 card listing them as a programme, split across further pages

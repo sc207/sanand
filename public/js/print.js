@@ -18,10 +18,26 @@
 <link rel="stylesheet" href="/css/styles.css">
 <link rel="stylesheet" href="/css/app-extras.css">
 <style>
-html,body{background:#fff;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+/* styles.css opens with html, body { height: 100%; max-width: 100vw;
+   overflow-x: hidden } — correct for an app shell, ruinous for print:
+   height:100% is exactly one page box, so a long table was clipped at
+   the first page and Chrome reported "Total: 1 page" however many rows
+   it had. Undo the shell geometry here, before anything else, or the
+   printed copy silently loses records.
+   The viewport units go too: a print window opened from a phone would
+   otherwise size itself from that phone's screen, and the same report
+   would come out differently on different devices. */
+html,body{
+  background:#fff;margin:0;padding:0;
+  height:auto;min-height:0;max-height:none;
+  width:auto;max-width:none;overflow:visible;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact;
+}
 body{font-family:Inter,system-ui,sans-serif}
 *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-@media print{html,body{background:#fff}}
+@media print{
+  html,body{background:#fff;height:auto;min-height:0;max-width:none;overflow:visible}
+}
 ${opt.css || ''}
 </style></head><body>
 <div class="${opt.wrapClass || 'print-wrap'}">${opt.inner || ''}</div>

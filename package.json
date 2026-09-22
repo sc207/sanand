@@ -6,7 +6,7 @@
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
-    "dev": "node --watch server/server.js",
+    "dev": "node --watch-path=./server --watch-path=./public server/server.js",
     "seed": "node server/seed.js"
   },
   "dependencies": {
