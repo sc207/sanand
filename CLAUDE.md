@@ -186,6 +186,22 @@ unless explicitly asked — don't bolt on an auth system as a side effect of oth
 its payment history on the same booking id — prefer it over cancel-and-recreate when a
 sevarthi changes seva.
 
+**Everything you can do to a booking has to be reachable from the devotee too.** The
+Payments page is organised around collecting, but the operator's other entry point is a
+person walking in and asking by name, and that lands on the Devotee register. Its profile
+listed a devotee's seva as rows with `cursor:default` and no actions at all — Change Seva,
+Collect, Edit and the ledger existed only on Payments, so the natural route to "I want to
+move my seva" was a dead end. A seva row in the profile now carries all four.
+`paymentForm`, `editBooking` and `reassignBooking` take an `{ onSaved }` option
+(`afterBookingChange` in `forms.js`): given one they call it instead of closing the sheet
+and repainting the page behind, which is how the profile puts the operator back on the
+profile rather than on whatever page happened to be underneath.
+
+Related, and the same bug twice: **"+ Seva" carried the devotee id in its markup and the
+handler ignored it**, so `Forms.addSevarthi()` opened blank and asked who it was for —
+about the person whose row had just been clicked. One `sevaPreset(d)` in `devotees.js` now
+feeds all three callers (list row, profile, "Save & add seva").
+
 #### Everything the trust enters, the trust can correct
 
 The operator must be able to fix any entry — a standing requirement, not a feature
@@ -312,6 +328,29 @@ Easy to get wrong, and it changes what a "day" means:
   rings; and `.lead-v` inherits `--font-heading` (Cinzel), which renders lowercase as
   small caps — right for a figure, wrong for a phrase like "In 3 days", so the padhramni
   lead overrides it back to `--font-body`.
+- **A list page is opened to see the list, so the list has to be on the first screen.**
+  Measured at 390×844, the first row of data sat at 900px on Payments, 1028 on the
+  Devotee register, 965 on Padhramni and 871 on Donations — every one below the fold, so
+  opening a page on a phone showed a title, two export buttons and a column of totals and
+  not one sevarthi. Three things were eating it, and `app-extras.css` fixes each where it
+  lives: the figure strip's `auto-fit minmax(220px)` collapsed to one column, so four
+  figures became four ~100px cards each carrying a 40px disc (now a 2×2 compact grid
+  under 560px, discs shrunk); the two export buttons took a whole row for words nobody
+  reads (icon-only under 560px, names kept in `title`/`aria-label`); and the Devotee
+  register's three filter selects stacked full-width (two to a row now). It is 682 / 752 /
+  732 / 621 today. **When adding anything above a list, re-measure at 390px** — the
+  numbers come from `pagescan.js`, which reports where the first row lands and whether it
+  is above the fold.
+- **A class that looks wrong may be one the theme already owns.** The `app.css` trap runs
+  in both directions: a class can look *unstyled* because it was only ever defined in that
+  dead file, and it can look *wrong* because `styles.css` already has a component of that
+  name. Our two export buttons were `.export-bar`, which is the portal's own bordered
+  CSV/Excel/PDF pill (`display:inline-flex`, white background, border, `width:100%` under
+  its breakpoints, with `.export-bar-label` / `.export-bar-btn` children). Our plain row
+  had been sitting inside that pill since it was written; nothing looked wrong while the
+  buttons were full-width text and filled it edge to edge, and it appeared as an empty
+  bordered slab the moment they shrank to icons. It is `.ex-bar` now. Before naming a new
+  class, grep `styles.css` for it.
 - **A devotee's money can exist without a live booking.** `booking_count` excludes
   cancelled seats but `total_paid` does not, so a devotee whose only seva was cancelled
   has payments and no bookings. Gating a row's figures on `booking_count` alone hides

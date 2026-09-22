@@ -487,7 +487,15 @@ dialog#sheet::backdrop { background: transparent; }
   padding: .45rem .7rem; font-size: .82rem;
   background: var(--ivory-card);
 }
-@media (max-width: 560px) { .filter-row .form-select { flex: 1 1 100%; } }
+/* Two to a row on a phone, not three stacked. A full-width select per
+   filter cost ~130px above the list for three controls that are each
+   one word wide; the sort is the odd one out and takes the full row so
+   its labels ("Most recently registered") are not clipped. */
+@media (max-width: 560px) {
+  .filter-row { display: flex; flex-wrap: wrap; }
+  .filter-row .form-select { flex: 1 1 calc(50% - .3rem); min-width: 0; }
+  .filter-row .form-select:last-child:nth-child(odd) { flex-basis: 100%; }
+}
 
 /* A devotee row carries the same three bands as a collections row. */
 .devotee-row { align-items: flex-start; gap: 1rem; }
@@ -937,8 +945,19 @@ dialog#sheet::backdrop { background: transparent; }
 /* ---------- Export toolbar ---------------------------------------------
    The same pair of buttons on every list, so an operator who finds the
    export once finds it everywhere. */
-.export-bar { display: flex; gap: .45rem; flex-wrap: wrap; }
-@media (max-width: 560px) { .export-bar { width: 100%; } .export-bar .btn { flex: 1 1 auto; } }
+/* Our two export buttons are `.ex-bar`, NOT `.export-bar`: styles.css
+   already has an `.export-bar` of its own — the portal's bordered
+   CSV/Excel/PDF pill, with `.export-bar-label` and `.export-bar-btn`
+   children, `display: inline-flex`, a white background, a border and
+   `width: 100%` under its own breakpoints. Reusing the name meant our
+   plain row of two buttons was sitting inside that pill the whole
+   time; nobody saw it while the buttons were full-width text and
+   filled the box edge to edge, and it appeared the moment they shrank
+   to icons, as an empty bordered slab. The lesson app.css keeps
+   teaching in one direction — a class that looks unstyled was only
+   ever defined in a dead file — runs the other way too: a class that
+   looks wrong may be one the theme already owns. */
+.ex-bar { display: flex; gap: .45rem; flex-wrap: wrap; }
 
 /* The printed sheet's own wrapper — no app chrome, no content cap. */
 .ex-wrap { max-width: none; padding: 0; margin: 0; }
@@ -1113,3 +1132,70 @@ dialog#sheet::backdrop { background: transparent; }
 }
 .entry-block[data-block="agreement"]::before { content: 'What was agreed'; }
 .entry-block[data-block="handover"]::before { content: 'Money handed over'; }
+
+/* A seva row inside a devotee's profile carries its own actions, so it
+   stacks rather than putting a title left and an amount far right. */
+.dv-seva-row { cursor: default; align-items: flex-start; }
+.dv-seva-row .row-main { width: 100%; }
+.dv-seva-row .row-sub { white-space: normal; }
+
+/* ============================================================
+   THE FIGURE STRIP ON A PHONE
+   ------------------------------------------------------------
+   Measured before changing anything: on a 390×844 screen the first
+   row of actual data sat at 900px on Payments, 1028 on the Devotee
+   register, 965 on Padhramni, 1853 on the dashboard. Every one of
+   those is below the fold, so opening a page on a phone showed a
+   title, some export buttons and a column of totals — and not one
+   sevarthi, devotee or padhramni. That is the whole "congested, hard
+   to use" complaint in one measurement.
+
+   The strip was the bulk of it: `auto-fit minmax(220px)` collapses to
+   a single column under 220px of content width, so four figures became
+   four stacked cards about 100px each, every one carrying a 40px icon
+   disc. Two columns of compact figures say the same thing in a third
+   of the height, and the totals are context for the list — not the
+   reason the page was opened.
+   ============================================================ */
+@media (max-width: 560px) {
+  .stats-grid,
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) {
+    grid-template-columns: 1fr 1fr;
+  }
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > *,
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(4),
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(5) {
+    grid-column: auto;
+    border-top: 0;
+  }
+  .stats-grid > * { padding: .7rem .8rem; border-top: 0; }
+  /* Hairlines come back, because there are rows and columns again:
+     a rule above every cell past the first pair, and one to the left
+     of every second cell. */
+  .stats-grid > *:nth-child(n+3) { border-top: 1px solid var(--warm-border); }
+  .stats-grid > *:nth-child(even)::before {
+    content: ''; position: absolute; left: 0; top: 12%; bottom: 12%;
+    width: 1px; background: var(--warm-border); display: block;
+  }
+  .stats-grid > *:nth-child(odd)::before { display: none; }
+
+  /* The disc is decoration once the figures are this small, and it is
+     the single biggest thing in each cell. */
+  .stats-grid > .stat:has(.stat-ico),
+  .stats-grid > .stat-card { gap: .5rem; }
+  .stat-ico, .stat-card-icon-wrapper { width: 28px; height: 28px; }
+  .stat-ico .ico, .stat-card-icon-wrapper .ico { width: 16px; height: 16px; }
+  .stat-card-value { font-size: 1.05rem; }
+  .stat-card-title { font-size: .72rem; margin-bottom: .05rem; }
+  .mg-muted-xs { font-size: .68rem; }
+}
+
+/* Export is secondary to the list. On a phone the two buttons kept a
+   whole row above the data for words nobody needed to read — the marks
+   alone say print and spreadsheet, and both now share the row with the
+   page's primary action. The names stay in title/aria-label. */
+@media (max-width: 560px) {
+  .ex-bar .btn { flex: 0 0 auto; }
+  .ex-bar .ex-label { display: none; }
+  .mg-page-actions > .btn { flex: 1 1 auto; }
+}

@@ -268,11 +268,18 @@
      One pair of buttons, identical on every page, so an operator who
      finds the export once finds it everywhere. */
   function toolbar(id) {
-    return `<div class="export-bar" id="${attr(id || 'exportBar')}">
-      <button type="button" class="btn btn-outline mg-btn-xs" data-export="pdf">
-        ${icon('print', 'ico-sm')} Print / PDF</button>
-      <button type="button" class="btn btn-outline mg-btn-xs" data-export="csv">
-        ${icon('sheet', 'ico-sm')} Excel (CSV)</button>
+    /* The words are wrapped so a phone can drop them and keep the two
+       marks, which lets both buttons share a row with the page's own
+       primary action instead of taking a row of their own above the
+       list. `title` and `aria-label` carry the name either way, so the
+       button is never a bare icon to a screen reader or a long press. */
+    return `<div class="ex-bar" id="${attr(id || 'exportBar')}">
+      <button type="button" class="btn btn-outline mg-btn-xs" data-export="pdf"
+              title="Print / PDF" aria-label="Print / PDF">
+        ${icon('print', 'ico-sm')}<span class="ex-label">Print / PDF</span></button>
+      <button type="button" class="btn btn-outline mg-btn-xs" data-export="csv"
+              title="Excel (CSV)" aria-label="Excel (CSV)">
+        ${icon('sheet', 'ico-sm')}<span class="ex-label">Excel (CSV)</span></button>
     </div>`;
   }
 

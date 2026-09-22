@@ -318,7 +318,13 @@
     body.querySelectorAll('[data-dev]').forEach((b) =>
       b.addEventListener('click', () => openProfile(b.getAttribute('data-dev'))));
     body.querySelectorAll('[data-seva]').forEach((b) =>
-      b.addEventListener('click', () => Forms.addSevarthi()));
+      b.addEventListener('click', () => {
+        /* The id was already in the markup and was being thrown away:
+           "+ Seva" on Rameshbhai's row opened a blank form and asked
+           who it was for. */
+        const d = state.rows.find((x) => String(x.id) === b.getAttribute('data-seva'));
+        Forms.addSevarthi(d ? { inquiry: sevaPreset(d) } : undefined);
+      }));
     body.querySelectorAll('[data-edit]').forEach((b) =>
       b.addEventListener('click', () => {
         const d = state.rows.find((x) => String(x.id) === b.getAttribute('data-edit'));
@@ -356,18 +362,36 @@
         </div>
 
         <div class="section-title">Sevarthi bookings</div>
+        ${/* These rows used to be cursor:default with no actions on
+              them at all — a dead end. The devotee's profile is exactly
+              where an operator lands when someone walks in and says
+              "I want to move my seva" or hands over money, and every
+              one of those actions existed only on the Payments page.
+              A seva row now carries the same four it does there. */''}
         ${d.bookings.length ? `<div class="card"><div class="card-body" style="padding:0"><div class="list">
-          ${d.bookings.map((b) => `
-            <div class="row-item" style="cursor:default">
+          ${d.bookings.map((b) => {
+            const cov = UI.coverage(b);
+            return `
+            <div class="row-item dv-seva-row">
               <div class="row-main">
                 <div class="row-title">${esc(b.pooja_name)} ${UI.coverageBadges(b)}</div>
-                <div class="row-sub">${esc(fmtDate(b.slot_date))}</div>
+                <div class="row-sub">${esc(b.slot_date ? fmtDate(b.slot_date) : UI.TBD)}
+                  · ${esc(money(b.amount_paid))} of ${esc(money(b.amount_committed))}${
+                  cov.outstanding > 0 ? ` · <strong style="color:var(--danger)">${esc(money(cov.outstanding))} due</strong>` : ''}</div>
+                ${b.status === 'cancelled' ? '' : `
+                <div class="btn-row" style="margin-top:.5rem">
+                  ${cov.outstanding > 0 ? `<button class="btn btn-primary mg-btn-xs" data-bk-pay="${attr(b.id)}">
+                    ${icon('rupee','ico-sm')} Collect</button>` : ''}
+                  <button class="btn btn-outline mg-btn-xs" data-bk-move="${attr(b.id)}">
+                    ${icon('seat','ico-sm')} Change Seva</button>
+                  <button class="btn btn-outline mg-btn-xs" data-bk-edit="${attr(b.id)}">
+                    ${icon('edit','ico-sm')} Edit</button>
+                  <button class="btn btn-outline mg-btn-xs" data-bk-ledger="${attr(b.id)}">
+                    ${icon('history','ico-sm')} Ledger</button>
+                </div>`}
               </div>
-              <div class="row-end">
-                <div class="row-amount">${esc(money(b.amount_paid))}</div>
-                <div class="small muted">of ${esc(money(b.amount_committed))}</div>
-              </div>
-            </div>`).join('')}
+            </div>`;
+          }).join('')}
         </div></div></div>` : `<p class="small muted">No seva booked yet.</p>`}
 
         ${d.donations.length ? `<div class="section-title">Donations</div>
@@ -384,10 +408,35 @@
         <button class="btn btn-primary" data-seva>Add Seva</button>`,
       onMount(sheet) {
         sheet.querySelector('[data-edit]').addEventListener('click', () => openForm(d));
-        sheet.querySelector('[data-seva]').addEventListener('click', () => { closeSheet(); Forms.addSevarthi(); });
+        /* Opening Add Seva from someone's own profile and then being
+           asked who it is for was the same thrown-away id as on the
+           list row. The sheet is reused, so no closeSheet() first. */
+        sheet.querySelector('[data-seva]').addEventListener('click',
+          () => Forms.addSevarthi({ inquiry: sevaPreset(d) }));
+
+        /* Every action re-opens the profile when it finishes, so the
+           operator is put back where they were rather than on whatever
+           page happened to be behind the sheet. */
+        const back = () => openProfile(id);
+        const on = (attrName, fn) => sheet.querySelectorAll('[' + attrName + ']').forEach((b) =>
+          b.addEventListener('click', () => fn(b.getAttribute(attrName))));
+        on('data-bk-pay', (bid) => Forms.paymentForm(bid, { onSaved: back }));
+        on('data-bk-move', (bid) => Forms.reassignBooking(bid, { onSaved: back }));
+        on('data-bk-edit', (bid) => Forms.editBooking(bid, { onSaved: back }));
+        on('data-bk-ledger', (bid) => Forms.bookingLedger(bid, back));
       },
     });
   }
+
+  /** What Add Seva needs to know about someone already on the register.
+      Spelled out in one place because three callers hand a devotee
+      over — a list row, the profile, and "Save & add seva" — and two of
+      them used to hand over nothing at all. */
+  const sevaPreset = (d) => ({
+    full_name: d.full_name, mobile: d.mobile, city: d.city,
+    state: d.state, mul_vatan: d.mul_vatan,
+    samaj_id: d.samaj_id, category_id: d.category_id,
+  });
 
   /* ---------- add / edit form ---------- */
   async function openForm(existing) {
@@ -461,11 +510,7 @@
               /* Hand the new devotee straight to Add Sevarthi. It opens
                  into the same #sheet, so no closeSheet() first — that
                  would flash the list in between. */
-              Forms.addSevarthi({ inquiry: {
-                full_name: saved.full_name, mobile: saved.mobile, city: saved.city,
-                state: saved.state, mul_vatan: saved.mul_vatan,
-                samaj_id: saved.samaj_id, category_id: saved.category_id,
-              } });
+              Forms.addSevarthi({ inquiry: sevaPreset(saved) });
               toast('Devotee added — now pick their seva', 'ok');
               return;
             }

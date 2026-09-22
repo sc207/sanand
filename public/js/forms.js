@@ -451,6 +451,21 @@
              total: amount };
   }
 
+  /** What to do once a booking flow has saved. Callers reached from a
+      list want the page behind the sheet repainted; callers reached
+      from a sheet of their own — the devotee's profile — want to be
+      put back there instead of left looking at whatever page happened
+      to be underneath. `onSaved` says which. */
+  function afterBookingChange(opts) {
+    const done = opts && opts.onSaved;
+    /* `done` puts something else in the sheet, so the dialog must stay
+       open — closing and reopening it flashes the page behind. */
+    if (typeof done === 'function') return done();
+    closeSheet();
+    if (typeof refreshPage === 'function') refreshPage();
+    return undefined;
+  }
+
   /** The block's own fields never belong in the parent payload. */
   function stripPaidNow(data) {
     const { paid_now, paid_payer, paid_amount, paid_devotee, paid_bapa,
@@ -1011,6 +1026,7 @@
      Bapa support" from the collections list is one click rather than
      a payment form the operator then has to re-point at Bapa. */
   async function paymentForm(bookingId, preset) {
+    const opts = preset || {};
     const b = await API.get(`/bookings/${bookingId}`);
     const due = Math.max(0, b.amount_committed - b.amount_paid);
     const asBapa = !!(preset && preset.payer_type === 'bhuvaji');
@@ -1171,11 +1187,10 @@
           e.currentTarget.textContent = 'Saving…';
           try {
             const res = await API.post('/payments', body);
-            closeSheet();
             const n = (res.payments || [res.payment]).length;
             toast(`${money(recorded)} recorded${n > 1 ? ' in 2 entries' : ''}` +
                   ` — ${res.booking_status.replace('_', ' ')}`, 'ok');
-            if (typeof refreshPage === 'function') refreshPage();
+            afterBookingChange(opts);
           } catch (err) {
             e.currentTarget.disabled = false;
             e.currentTarget.textContent = 'Save Payment';
@@ -1190,7 +1205,7 @@
      EDIT SEVARTHI BOOKING — revise the committed amount / Bapa's
      share on an existing booking, or cancel it outright.
      ============================================================ */
-  async function editBooking(bookingId) {
+  async function editBooking(bookingId, opts) {
     const b = await API.get(`/bookings/${bookingId}`);
 
     openSheet({
@@ -1225,7 +1240,7 @@
         sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
         sheet.querySelector('[data-view-history]').addEventListener('click', () => bookingLedger(bookingId));
         const changeSevaBtn = sheet.querySelector('[data-change-seva]');
-        if (changeSevaBtn) changeSevaBtn.addEventListener('click', () => reassignBooking(bookingId));
+        if (changeSevaBtn) changeSevaBtn.addEventListener('click', () => reassignBooking(bookingId, opts));
         const cancelBtn = sheet.querySelector('[data-cancel-booking]');
         if (cancelBtn) cancelBtn.addEventListener('click', () => cancelBooking(bookingId, b.full_name));
         const saveBtn = sheet.querySelector('#editSave');
@@ -1261,9 +1276,8 @@
             /* The edit lands first: money must never be recorded against
                a commitment the save then failed to raise. */
             if (paid.payment) await API.post('/payments', { booking_id: bookingId, ...paid.payment });
-            closeSheet();
             toast('Sevarthi updated' + (paid.payment ? ` — ${money(paid.total)} received` : ''), 'ok');
-            if (typeof refreshPage === 'function') refreshPage();
+            afterBookingChange(opts);
           } catch (err) {
             e.currentTarget.disabled = false;
             e.currentTarget.textContent = 'Save Changes';
@@ -1298,7 +1312,7 @@
      payment already on it) carries over; only the seat and, if the
      operator changes it, the committed amount move.
      ============================================================ */
-  async function reassignBooking(bookingId) {
+  async function reassignBooking(bookingId, opts) {
     const b = await API.get(`/bookings/${bookingId}`);
     const state = { poojaId: null, slotId: null, pooja: null, catFilter: 'all',
                      expDate: undefined, budget: b.amount_committed };
@@ -1486,9 +1500,8 @@
           await API.post(`/bookings/${bookingId}/reassign`, {
             slot_id: state.slotId, amount_committed: total, bhuvaji_planned_amount: bapa,
           });
-          closeSheet();
           toast('Sevarthi moved', 'ok');
-          if (typeof refreshPage === 'function') refreshPage();
+          afterBookingChange(opts);
         } catch (err) {
           e.currentTarget.disabled = false;
           e.currentTarget.textContent = 'Move Sevarthi';
