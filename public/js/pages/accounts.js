@@ -115,9 +115,11 @@
             Active</label>` : ''}
         </form>`,
       footer: `<button class="btn btn-outline" data-sheet-close>Cancel</button>
-               <button class="btn btn-primary" id="userSave">${u.id ? 'Save' : 'Add User'}</button>`,
+               <button class="btn btn-primary" id="userSave">${u.id ? 'Save changes' : 'Add User'}</button>`,
       onMount(sheet) {
         sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
+        UI.bindEnterFlow(document.getElementById('userForm'),
+          () => sheet.querySelector('#userSave').click());
         sheet.querySelector('#userSave').addEventListener('click', async (e) => {
           const form = document.getElementById('userForm');
           clearFieldErrors(form);

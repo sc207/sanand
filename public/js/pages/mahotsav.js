@@ -505,47 +505,64 @@
               <input class="form-input" id="f_end_date" name="end_date" type="date"></div>
           </div>
           `}
-          <div class="form-group">
-            <label class="form-label" for="f_seating_mode">The count is</label>
-            <select class="form-select" id="f_seating_mode" name="seating_mode">
-              <option value="per_day" ${p.seating_mode !== 'whole' ? 'selected' : ''}>per day — people come each day</option>
-              <option value="whole" ${p.seating_mode === 'whole' ? 'selected' : ''}>the total — one sevarthi holds a patla for the whole event</option>
-            </select>
-            ${editing ? `<div class="form-hint">Changing this rebuilds the day slots, so it is only
-              possible while no sevarthi are seated.</div>` : ''}
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="f_capacity_mode">Registration capacity</label>
-            <select class="form-select" id="f_capacity_mode" name="capacity_mode">
-              <option value="not_decided" ${capMode === 'not_decided' ? 'selected' : ''}>Not decided yet</option>
-              <option value="limited" ${capMode === 'limited' ? 'selected' : ''}>Limited — a maximum number</option>
-              <option value="unlimited" ${capMode === 'unlimited' ? 'selected' : ''}>Unlimited — no cap</option>
-            </select>
-            <div class="form-hint">Not decided still takes sevarthi — nothing is blocked until a limit is actually set.</div>
-          </div>
-          <div class="form-group" id="seatsField" style="${capMode === 'limited' ? '' : 'display:none'}">
-            <label class="form-label req" for="f_seats_per_day">Maximum registrations</label>
-            <input class="form-input" id="f_seats_per_day" name="seats_per_day" type="number" min="1" step="1"
-                   value="${attr(p.seats_per_day ?? 100)}" inputmode="numeric">
-            <div class="form-hint" id="seatsHint"></div>
-          </div>
           <div class="form-row">
             <div class="form-group"><label class="form-label" for="f_amount">Contribution per sevarthi</label>
-              <input class="form-input" id="f_amount" name="amount" type="number" min="0" step="1" value="${attr(p.amount ?? 0)}" inputmode="numeric"></div>
-            <div class="form-group"><label class="form-label" for="f_target_amount">Overall target</label>
-              <input class="form-input" id="f_target_amount" name="target_amount" type="number" min="0" step="1" value="${attr(p.target_amount ?? 0)}" inputmode="numeric">
-              <div class="form-hint" id="targetHint"></div></div>
+              <input class="form-input" id="f_amount" name="amount" type="number" min="0" step="1"
+                     value="${attr(p.amount ?? 0)}" inputmode="numeric"></div>
+            <div></div>
           </div>
-          ${editing ? `
-          <div class="form-group">
-            <label class="form-label" for="f_status">Status</label>
-            <select class="form-select" id="f_status" name="status">
-              <option value="open" ${p.status !== 'closed' ? 'selected' : ''}>Open — taking sevarthi</option>
-              <option value="closed" ${p.status === 'closed' ? 'selected' : ''}>Closed — no new sevarthi</option>
-            </select>
-          </div>` : ''}
-          <div class="form-group"><label class="form-label" for="f_description">Note</label>
-            <textarea class="form-textarea" id="f_description" name="description" data-translate rows="2">${esc(p.description || '')}</textarea></div>
+
+          ${/* Seating and capacity both have a right answer already —
+                per day, and "not decided", which is the state Phase 1
+                expects a new pooja to be in. Nine fields at once made
+                creating one look like a configuration screen; the two
+                that decide what the pooja *is* stay up top and the rest
+                wait behind a line. An existing pooja opens them, since
+                changing one is usually why it was opened. */''}
+          ${UI.moreFields('Seating & capacity', `
+            <div class="form-group">
+              <label class="form-label" for="f_seating_mode">The count is</label>
+              <select class="form-select" id="f_seating_mode" name="seating_mode">
+                <option value="per_day" ${p.seating_mode !== 'whole' ? 'selected' : ''}>per day — people come each day</option>
+                <option value="whole" ${p.seating_mode === 'whole' ? 'selected' : ''}>the total — one sevarthi holds a patla for the whole event</option>
+              </select>
+              ${editing ? `<div class="form-hint">Changing this rebuilds the day slots, so it is only
+                possible while no sevarthi are seated.</div>` : ''}
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="f_capacity_mode">Registration capacity</label>
+              <select class="form-select" id="f_capacity_mode" name="capacity_mode">
+                <option value="not_decided" ${capMode === 'not_decided' ? 'selected' : ''}>Not decided yet</option>
+                <option value="limited" ${capMode === 'limited' ? 'selected' : ''}>Limited — a maximum number</option>
+                <option value="unlimited" ${capMode === 'unlimited' ? 'selected' : ''}>Unlimited — no cap</option>
+              </select>
+              <div class="form-hint">Not decided still takes sevarthi — nothing is blocked until a limit is actually set.</div>
+            </div>
+            <div class="form-group" id="seatsField" style="${capMode === 'limited' ? '' : 'display:none'}">
+              <label class="form-label req" for="f_seats_per_day">Maximum registrations</label>
+              <input class="form-input" id="f_seats_per_day" name="seats_per_day" type="number" min="1" step="1"
+                     value="${attr(p.seats_per_day ?? 100)}" inputmode="numeric">
+              <div class="form-hint" id="seatsHint"></div>
+            </div>`,
+            { open: editing || capMode === 'limited',
+              count: capMode === 'limited' ? 'limited' : 'defaults are fine' })}
+
+          ${UI.moreFields('Target, status & note', `
+            <div class="form-group"><label class="form-label" for="f_target_amount">Overall target</label>
+              <input class="form-input" id="f_target_amount" name="target_amount" type="number" min="0" step="1"
+                     value="${attr(p.target_amount ?? 0)}" inputmode="numeric">
+              <div class="form-hint" id="targetHint"></div></div>
+            ${editing ? `
+            <div class="form-group">
+              <label class="form-label" for="f_status">Status</label>
+              <select class="form-select" id="f_status" name="status">
+                <option value="open" ${p.status !== 'closed' ? 'selected' : ''}>Open — taking sevarthi</option>
+                <option value="closed" ${p.status === 'closed' ? 'selected' : ''}>Closed — no new sevarthi</option>
+              </select>
+            </div>` : ''}
+            <div class="form-group"><label class="form-label" for="f_description">Note</label>
+              <textarea class="form-textarea" id="f_description" name="description" data-translate rows="2">${esc(p.description || '')}</textarea></div>`,
+            { open: editing, count: 'optional' })}
           ${editing ? `<div class="divider"></div>
             <div class="form-hint">The dates are changed with <strong>Change dates</strong> on the pooja
               page, and one day's count by tapping that day.</div>
@@ -555,7 +572,7 @@
               close it instead, which keeps the history.</div>` : ''}
         </form>`,
       footer: `<button class="btn btn-outline" data-sheet-close>Cancel</button>
-               <button class="btn btn-primary" id="poojaSave">${editing ? 'Save' : 'Create'}</button>`,
+               <button class="btn btn-primary" id="poojaSave">${editing ? 'Save changes' : 'Create ' + noun}</button>`,
       onMount(sheet) {
         sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
         const form = document.getElementById('poojaForm');
