@@ -7,6 +7,7 @@ const db = require('../db');
 const { log } = require('../middleware/audit');
 const { refreshStatus } = require('./bookings');
 const { todayLocal, monthLocal } = require('../util/dates');
+const { readPaymentEntries, insertPaymentRows, actingUser } = require('../util/payment-entries');
 
 const router = express.Router();
 
@@ -120,44 +121,17 @@ router.post('/', (req, res) => {
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
   if (booking.status === 'cancelled') return res.status(400).json({ error: 'This booking is cancelled' });
 
-  const isSplit = b.devotee_amount !== undefined || b.bhuvaji_amount !== undefined;
-  const entries = [];
-
-  if (isSplit) {
-    const fromDevotee = Number(b.devotee_amount || 0);
-    const fromBapa = Number(b.bhuvaji_amount || 0);
-    if (fromDevotee < 0 || fromBapa < 0) {
-      return res.status(400).json({ error: 'An amount cannot be negative' });
-    }
-    if (!(fromDevotee > 0) && !(fromBapa > 0)) {
-      return res.status(400).json({ error: 'Enter an amount for the devotee, for Bapa, or both' });
-    }
-    // A zero side is simply left out — never written as a ₹0 ledger row.
-    if (fromDevotee > 0) entries.push({ amount: fromDevotee, payer_type: 'devotee' });
-    if (fromBapa > 0) entries.push({ amount: fromBapa, payer_type: 'bhuvaji' });
-  } else {
-    const amount = Number(b.amount || 0);
-    if (!(amount > 0)) return res.status(400).json({ error: 'Enter an amount greater than zero' });
-    entries.push({ amount, payer_type: b.payer_type === 'bhuvaji' ? 'bhuvaji' : 'devotee' });
+  const parsed = readPaymentEntries(b);
+  if (parsed.error) return res.status(400).json({ error: parsed.error });
+  const entries = parsed.entries;
+  if (!entries.length) {
+    return res.status(400).json({ error: 'Enter an amount for the devotee, for Bapa, or both' });
   }
-
-  const common = {
-    booking_id: booking.id,
-    payment_date: b.payment_date || todayLocal(),
-    receipt_no: (b.receipt_no || '').trim() || null,
-    notes: (b.notes || '').trim() || null,
-    recorded_by: req.get('X-User-Name') ? decodeURIComponent(req.get('X-User-Name')) : 'Unknown',
-  };
-
-  const insert = db.prepare(`
-    INSERT INTO payments (booking_id, amount, payer_type, payment_date, receipt_no, notes, recorded_by)
-    VALUES (@booking_id, @amount, @payer_type, @payment_date, @receipt_no, @notes, @recorded_by)
-  `);
 
   /* Both rows land or neither does — a split that wrote only the
      devotee's half would understate what the trust actually holds. */
   const ids = db.transaction(() =>
-    entries.map((e) => Number(insert.run({ ...common, ...e }).lastInsertRowid)))();
+    insertPaymentRows(booking.id, entries, b, actingUser(req)))();
 
   const updated = refreshStatus(booking.id);
   const rows = ids.map((id) => db.prepare(PAYMENT_SELECT + ` WHERE p.id = ?`).get(id));

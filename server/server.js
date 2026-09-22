@@ -67,5 +67,9 @@ function shutdown() {
   // Don't let a hung keep-alive connection block the restart.
   setTimeout(() => { try { db.close(); } catch { /* already closed */ } process.exit(0); }, 1500).unref();
 }
+/* SIGHUP too: a server started from a shell that then exits is hung up
+   on, not interrupted, and an unhandled SIGHUP left the database open
+   and aborted exactly as above. */
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+process.on('SIGHUP', shutdown);

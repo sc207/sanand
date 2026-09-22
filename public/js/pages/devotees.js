@@ -346,30 +346,51 @@
           <div class="form-group"><label class="form-label" for="f_notes">Note</label>
             <input class="form-input" id="f_notes" name="notes" data-translate value="${attr(d.notes || '')}"></div>
         </form>`,
+      /* Most people are put on the register *because* they are taking a
+         seva, so a new devotee can go straight through to it rather than
+         being saved, hunted down in the list and opened again. */
       footer: `<button class="btn btn-outline" data-sheet-close>Cancel</button>
+               ${d.id ? '' : '<button class="btn btn-outline" id="devSaveSeva">Save &amp; add seva</button>'}
                <button class="btn btn-primary" id="devSave">${d.id ? 'Save' : 'Add Devotee'}</button>`,
       onMount(sheet) {
         sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
         const form = document.getElementById('devForm');
         bindLookupAdders(form); UI.bindTranslate(form);
-        sheet.querySelector('#devSave').addEventListener('click', async (e) => {
+        async function save(btn, thenSeva) {
           clearFieldErrors(form);
           const data = readForm(form);
           if (!data.full_name) return showFieldError(form, 'full_name', 'Please enter the name');
           const mobileMsg = UI.mobileError(data.mobile);
           if (mobileMsg) return showFieldError(form, 'mobile', mobileMsg);
-          e.currentTarget.disabled = true;
+          btn.disabled = true;
           try {
-            if (d.id) await API.put('/devotees/' + d.id, data);
-            else await API.post('/devotees', data);
+            const saved = d.id ? await API.put('/devotees/' + d.id, data)
+                               : await API.post('/devotees', data);
+            if (thenSeva) {
+              /* Hand the new devotee straight to Add Sevarthi. It opens
+                 into the same #sheet, so no closeSheet() first — that
+                 would flash the list in between. */
+              Forms.addSevarthi({ inquiry: {
+                full_name: saved.full_name, mobile: saved.mobile, city: saved.city,
+                state: saved.state, mul_vatan: saved.mul_vatan,
+                samaj_id: saved.samaj_id, category_id: saved.category_id,
+              } });
+              toast('Devotee added — now pick their seva', 'ok');
+              return;
+            }
             closeSheet();
             toast(d.id ? 'Devotee updated' : 'Devotee added', 'ok');
             refreshPage();
           } catch (err) {
-            e.currentTarget.disabled = false;
+            btn.disabled = false;
             toast(err.message, 'err');
           }
-        });
+        }
+
+        sheet.querySelector('#devSave')
+          .addEventListener('click', (e) => save(e.currentTarget, false));
+        const sevaBtn = sheet.querySelector('#devSaveSeva');
+        if (sevaBtn) sevaBtn.addEventListener('click', (e) => save(e.currentTarget, true));
       },
     });
   }

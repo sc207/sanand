@@ -68,7 +68,7 @@
           <h1 class="banner-title mg-page-title">Murti Pran Pratishtha Mahotsav</h1>
           <p class="mg-page-sub">Sevarthi seating and contributions across all three sevas</p>
         </div>
-        <button class="btn btn-primary mg-btn-xs" data-add-sevarthi>${icon('plus','ico-sm')} Sevarthi</button>
+        <button class="btn btn-primary mg-btn-xs" data-add-sevarthi>${icon('plus','ico-sm')} Seva</button>
       </div>
 
       <div class="seva-grid">
@@ -191,7 +191,7 @@
         </div>
         <div style="display:flex;gap:.4rem">
           <button class="btn btn-outline mg-btn-xs" data-edit-pooja>${icon('edit','ico-sm')} Edit</button>
-          <button class="btn btn-primary mg-btn-xs" data-add-sevarthi>${icon('plus','ico-sm')} Sevarthi</button>
+          <button class="btn btn-primary mg-btn-xs" data-add-sevarthi>${icon('plus','ico-sm')} Seva</button>
         </div>
       </div>
 

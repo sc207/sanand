@@ -136,7 +136,7 @@
         <div class="quick-actions-grid">
           <button class="action-tile" data-quick="sevarthi">
             <span class="action-tile-icon">${icon('seat')}</span>
-            <span class="action-tile-label">Add Sevarthi</span></button>
+            <span class="action-tile-label">Add Seva</span></button>
           <button class="action-tile" data-quick="payment">
             <span class="action-tile-icon">${icon('rupee')}</span>
             <span class="action-tile-label">Add Payment</span></button>

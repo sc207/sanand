@@ -10,6 +10,7 @@ const express = require('express');
 const db = require('../db');
 const { log } = require('../middleware/audit');
 const { upsertDevotee } = require('./devotees');
+const { readPaymentEntries, insertPaymentRows, actingUser } = require('../util/payment-entries');
 
 const router = express.Router();
 
@@ -97,6 +98,16 @@ router.post('/', (req, res) => {
       devoteeId = r.id;
     }
 
+    /* A sevarthi who hands the money over as they register should not
+       have to be found again afterwards to record it, so `payment` is
+       accepted here in the same shapes POST /api/payments takes
+       (single or split). It goes in the *same* transaction as the seat:
+       a booking that kept the patla but lost the cash would be worse
+       than either failing outright. */
+    const parsedPayment = readPaymentEntries(b.payment);
+    if (parsedPayment.error) return res.status(400).json({ error: parsedPayment.error });
+    const paymentEntries = parsedPayment.entries;
+
     const book = db.transaction(() => {
       const fresh = db.prepare(`SELECT * FROM pooja_slots WHERE id = ?`).get(slot.id);
       if (fresh.capacity !== null && fresh.booked_count >= fresh.capacity) {
@@ -113,15 +124,32 @@ router.post('/', (req, res) => {
         notes: (b.notes || '').trim() || null,
       });
       db.prepare(`UPDATE pooja_slots SET booked_count = booked_count + 1 WHERE id = ?`).run(slot.id);
-      return Number(info.lastInsertRowid);
+      const id = Number(info.lastInsertRowid);
+      const paymentIds = paymentEntries.length
+        ? insertPaymentRows(id, paymentEntries, b.payment, actingUser(req)) : [];
+      return { id, paymentIds };
     });
 
-    const bookingId = book();
+    const { id: bookingId, paymentIds } = book();
+    // Status is always recomputed from the ledger, never set by hand.
+    if (paymentIds.length) refreshStatus(bookingId);
+
     const row = db.prepare(BOOKING_SELECT + ` WHERE b.id = ?`).get(bookingId);
     log(req, {
       action: 'create', entity: 'booking', entityId: bookingId,
       summary: `${row.full_name} added as sevarthi — ${row.pooja_name} on ${row.slot_date} (₹${amountCommitted})`,
       details: { pooja: row.pooja_name, date: row.slot_date, amount_committed: amountCommitted, bhuvaji_planned: bhuvajiPlanned },
+    });
+    /* The payment is audited as a payment in its own right, so the cash
+       trail reads the same whether it arrived at registration or later. */
+    paymentEntries.forEach((e, i) => {
+      log(req, {
+        action: 'payment', entity: 'payment', entityId: paymentIds[i],
+        summary: `₹${e.amount} cash received from ` +
+                 `${e.payer_type === 'bhuvaji' ? 'Bapa (on behalf of ' + row.full_name + ')' : row.full_name}` +
+                 ` at registration — ${row.pooja_name} ${row.slot_date} [${row.status}]`,
+        details: { amount: e.amount, payer_type: e.payer_type, booking_id: bookingId, at_registration: true },
+      });
     });
     res.status(201).json(row);
   } catch (e) {

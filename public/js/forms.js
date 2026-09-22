@@ -85,6 +85,10 @@
           <input class="form-input" id="f_bhuvaji_planned_amount" name="bhuvaji_planned_amount" type="number" min="0" step="1"
                  value="${attr(enabled ? amount : 0)}" inputmode="numeric">
           <div class="form-hint">If the sevarthi cannot give the full amount, enter the share Bhuvaji Suresh Bapa will cover.</div>
+          ${/* The other half of the arithmetic. Entering Bapa's share
+                without seeing what that leaves the sevarthi made the
+                operator work the subtraction out in their head. */''}
+          <div class="form-hint" id="bhuvajiShareSplit" style="margin-top:.35rem"></div>
         </div>
       </div>`;
   }
@@ -93,17 +97,267 @@
       moment it's switched off so a leftover figure can never sneak
       through unseen. Call once the form markup is in the DOM. */
   function bindBhuvajiToggle(form) {
+    const split = form.querySelector('#bhuvajiShareSplit');
+
+    /* Contribution = the sevarthi's share + Bapa's. Only one of the two
+       is ever typed, so show the other rather than leaving the operator
+       to subtract. */
+    function paintShare() {
+      if (!split) return;
+      const total = Number((form.amount_committed || {}).value || 0);
+      const bapa = Number(form.bhuvaji_planned_amount.value || 0);
+      if (!form.bhuvaji_enabled.checked || !total) { split.innerHTML = ''; return; }
+      split.innerHTML = bapa > total
+        ? `<span style="color:var(--warning)">That is more than the ${esc(money(total))} contribution.</span>`
+        : `Bapa covers <strong>${esc(money(bapa))}</strong>, the sevarthi gives
+           <strong>${esc(money(total - bapa))}</strong>.`;
+    }
+
     form.bhuvaji_enabled.addEventListener('change', (e) => {
       document.getElementById('bhuvajiAmountWrap').style.display = e.target.checked ? '' : 'none';
       if (e.target.checked) form.bhuvaji_planned_amount.focus();
       else form.bhuvaji_planned_amount.value = '0';
+      paintShare();
     });
+    form.bhuvaji_planned_amount.addEventListener('input', paintShare);
+    if (form.amount_committed) form.amount_committed.addEventListener('input', paintShare);
+    paintShare();
+    return { paintShare };
   }
 
   /** The amount only counts when the toggle is on — reading the number
       field directly would let a stale value slip through while it's
       hidden and supposedly off. */
   const readBhuvajiAmount = (data) => (data.bhuvaji_enabled ? Number(data.bhuvaji_planned_amount || 0) : 0);
+
+  /* ---------- picking someone already on the register ----------
+     Most seva after the first are taken by people already registered,
+     and retyping a name and number that the trust already holds is both
+     slower and a chance to create a near-duplicate. This sits above the
+     devotee fields and fills them in from a search; the fields stay
+     editable afterwards, and `upsertDevotee` merges by mobile, so a
+     correction made here updates the register rather than forking it. */
+  function existingDevoteeSearch() {
+    return `
+      <div class="form-group" id="existingDevotee">
+        <label class="form-label" for="f_existing">Already on the register?</label>
+        <input class="form-input" id="f_existing" data-existing-search autocomplete="off"
+               placeholder="Search name or mobile — or just fill the form below for someone new">
+        <div class="dv-results" hidden></div>
+        <div class="small muted" id="existingPicked" hidden></div>
+      </div>`;
+  }
+
+  /** Fill `form`'s devotee fields from a picked register entry. */
+  function bindExistingDevotee(form) {
+    const wrap = form.querySelector('#existingDevotee');
+    if (!wrap) return;
+    const input = wrap.querySelector('[data-existing-search]');
+    const box = wrap.querySelector('.dv-results');
+    const picked = wrap.querySelector('#existingPicked');
+
+    const search = debounce(async () => {
+      const q = input.value.trim();
+      if (q.length < 2) { box.hidden = true; box.innerHTML = ''; return; }
+      let rows = [];
+      try { rows = await API.devotees({ search: q }); } catch { return; }
+      if (!rows.length) {
+        box.innerHTML = `<div class="dv-empty small muted">No one matches — fill the form below to register them.</div>`;
+        box.hidden = false; return;
+      }
+      box.innerHTML = rows.slice(0, 8).map((d) => `
+        <button type="button" class="dv-result" data-id="${attr(d.id)}">
+          <strong>${esc(d.full_name)}</strong>
+          <span class="small muted">${[d.mobile, d.city, d.samaj].filter(Boolean).map(esc).join(' · ')}</span>
+        </button>`).join('');
+      box.hidden = false;
+      box.querySelectorAll('[data-id]').forEach((b) =>
+        b.addEventListener('click', () => {
+          const d = rows.find((x) => String(x.id) === b.getAttribute('data-id'));
+          fill(d);
+        }));
+    }, 280);
+
+    function fill(d) {
+      const set = (name, v) => { if (form[name] && v != null) form[name].value = v; };
+      set('full_name', d.full_name);
+      set('mobile', d.mobile || '');
+      set('city', d.city || '');
+      set('state', d.state || 'Gujarat');
+      set('mul_vatan', d.mul_vatan || '');
+      if (form.samaj_id) form.samaj_id.value = d.samaj_id || '';
+      if (form.category_id) form.category_id.value = d.category_id || '';
+      box.hidden = true; box.innerHTML = '';
+      input.value = d.full_name;
+      picked.hidden = false;
+      picked.innerHTML = `Using <strong>${esc(d.full_name)}</strong> from the register` +
+        `${d.booking_count ? ` · already on ${esc(UI.num(d.booking_count))} seva` : ''}` +
+        ` — edit anything below and their record updates.`;
+      // Any hint the mobile-blur check left is now stale.
+      const dup = document.getElementById('dupHint');
+      if (dup) dup.textContent = '';
+    }
+
+    input.addEventListener('input', () => { picked.hidden = true; search(); });
+  }
+
+  /* ---------- splitting an amount between the sevarthi and Bapa ----------
+     Whenever money is split, the operator knows one side and the total:
+     "he's giving ten lakh, Bapa covers the rest". Typing the second
+     figure is arithmetic the form can do.
+
+     The field you type in drives; the *other* one fills itself with
+     whatever is left of the due. As soon as you type into that second
+     field it becomes yours and the balancing stops — otherwise clearing
+     Bapa's share to zero would silently rewrite the sevarthi's, which is
+     the usual way two-way binding turns hostile.
+
+     Returns a `reset()` for forms that repaint the pair. */
+  function bindSplitBalance(a, b, dueOf, onPaint) {
+    let typed = {};
+    function wire(self, other) {
+      self.addEventListener('input', () => {
+        typed[self.name] = true;
+        if (!typed[other.name]) {
+          const rest = Math.max(0, Number(dueOf() || 0) - Number(self.value || 0));
+          other.value = rest || '';
+          other.dataset.autofilled = '1';
+        }
+        delete self.dataset.autofilled;
+        if (onPaint) onPaint();
+      });
+    }
+    wire(a, b); wire(b, a);
+    return { reset() { typed = {}; } };
+  }
+
+  /** Says which side the form filled in, so the hint can own up to it
+      rather than leaving a number the operator did not type unexplained.
+      `labels` describes the fields in order: [what `a` is, what `b` is]. */
+  function autoFilledNote(a, b, labels) {
+    const which = a.dataset.autofilled ? labels[0] : b.dataset.autofilled ? labels[1] : null;
+    return which
+      ? ` <span class="muted">· ${esc(which)} filled in to cover the rest — change it if that's not right</span>`
+      : '';
+  }
+
+  /* ---------- "paid now" ----------
+     A sevarthi who hands the money over while they are registering
+     should not have to be found again afterwards to record it. This is
+     the same Devotee / Bapa / Both choice as the payment sheet, folded
+     into whichever form is already open, and it stays off until the
+     operator turns it on so a blank form never records ₹0.
+
+     `name`s are prefixed so this can sit in a form that already has an
+     `amount` field of its own (Add Sevarthi's Total Contribution). */
+  function paidNowField(opts) {
+    const o = opts || {};
+    return `
+      <div class="divider"></div>
+      <div class="form-group">
+        <label class="small" style="display:flex;align-items:center;gap:.45rem;font-weight:500">
+          <input type="checkbox" name="paid_now" id="f_paid_now" style="width:auto;min-height:0">
+          ${esc(o.label || 'Money received now')}
+        </label>
+        <div id="paidNowWrap" hidden style="margin-top:.6rem">
+          <div class="btn-row" style="margin-bottom:.7rem">
+            <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
+              <input type="radio" name="paid_payer" value="devotee" checked style="width:auto;min-height:0;margin-right:.35rem"> Devotee</label>
+            <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
+              <input type="radio" name="paid_payer" value="bhuvaji" style="width:auto;min-height:0;margin-right:.35rem"> Bapa</label>
+            <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
+              <input type="radio" name="paid_payer" value="both" style="width:auto;min-height:0;margin-right:.35rem"> Both</label>
+          </div>
+          <div id="paidNowSingle" class="form-group">
+            <label class="form-label" for="f_paid_amount">Amount received</label>
+            <input class="form-input" id="f_paid_amount" name="paid_amount" type="number" min="0" step="1" inputmode="numeric">
+          </div>
+          <div id="paidNowSplit" hidden>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label" for="f_paid_devotee">From devotee</label>
+                <input class="form-input" id="f_paid_devotee" name="paid_devotee" type="number" min="0" step="1" inputmode="numeric"></div>
+              <div class="form-group"><label class="form-label" for="f_paid_bapa">From Bapa</label>
+                <input class="form-input" id="f_paid_bapa" name="paid_bapa" type="number" min="0" step="1" inputmode="numeric"></div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label" for="f_paid_date">Date</label>
+              <input class="form-input" id="f_paid_date" name="paid_date" type="date" value="${attr(todayISO())}"></div>
+            <div class="form-group"><label class="form-label" for="f_paid_receipt">Receipt No.</label>
+              <input class="form-input" id="f_paid_receipt" name="paid_receipt"></div>
+          </div>
+          <p class="small" id="paidNowHint" style="margin:0"></p>
+        </div>
+      </div>`;
+  }
+
+  /** Wire it up. `dueOf()` returns what is outstanding right now, so the
+      hint can say whether what is being entered settles the seva — in
+      Add Sevarthi that is the contribution field, which the operator is
+      still typing into. */
+  function bindPaidNow(form, dueOf) {
+    const wrap = form.querySelector('#paidNowWrap');
+    if (!wrap) return;
+    const single = form.querySelector('#paidNowSingle');
+    const split = form.querySelector('#paidNowSplit');
+    const hint = form.querySelector('#paidNowHint');
+    const payerOf = () => (form.querySelector('[name="paid_payer"]:checked') || {}).value || 'devotee';
+
+    function paint() {
+      const both = payerOf() === 'both';
+      single.hidden = both;
+      split.hidden = !both;
+      const total = both
+        ? Number(form.paid_devotee.value || 0) + Number(form.paid_bapa.value || 0)
+        : Number(form.paid_amount.value || 0);
+      const due = Number(dueOf() || 0);
+      hint.innerHTML = !total
+        ? '<span class="muted">Leave blank if nothing was handed over.</span>'
+        : `Recording <strong>${esc(money(total))}</strong>` +
+          (both ? ' as two entries' : '') +
+          (total > due ? ` — <span style="color:var(--warning)">${esc(money(total - due))} above the contribution</span>`
+           : total === due ? ' — <span style="color:var(--success)">settles this seva in full</span>'
+           : ` — <span class="muted">${esc(money(due - total))} would still be due</span>`) +
+          (both ? autoFilledNote(form.paid_devotee, form.paid_bapa, ["The devotee's share", "Bapa's share"]) : '');
+    }
+
+    form.paid_now.addEventListener('change', (e) => {
+      wrap.hidden = !e.target.checked;
+      if (e.target.checked) { paint(); form.paid_amount.focus(); }
+    });
+    form.querySelectorAll('[name="paid_payer"]').forEach((r) => r.addEventListener('change', paint));
+    ['paid_amount', 'paid_devotee', 'paid_bapa'].forEach((n) =>
+      form[n].addEventListener('input', paint));
+    // Type one side, the other covers the rest of the contribution.
+    bindSplitBalance(form.paid_devotee, form.paid_bapa, dueOf, paint);
+  }
+
+  /** Read the block into the `payment` body the API takes, or null when
+      it is switched off. Returns `{ error, field }` for the caller to
+      surface rather than throwing. */
+  function readPaidNow(data) {
+    if (!data.paid_now) return { payment: null };
+    const common = { payment_date: data.paid_date || undefined, receipt_no: data.paid_receipt || undefined };
+    if (data.paid_payer === 'both') {
+      const d = Number(data.paid_devotee || 0);
+      const p = Number(data.paid_bapa || 0);
+      if (d < 0 || p < 0) return { error: 'An amount cannot be negative', field: 'paid_devotee' };
+      if (!d && !p) return { error: 'Enter what was received, or untick the box', field: 'paid_devotee' };
+      return { payment: { devotee_amount: d, bhuvaji_amount: p, ...common }, total: d + p };
+    }
+    const amount = Number(data.paid_amount || 0);
+    if (amount < 0) return { error: 'An amount cannot be negative', field: 'paid_amount' };
+    if (!amount) return { error: 'Enter what was received, or untick the box', field: 'paid_amount' };
+    return { payment: { amount, payer_type: data.paid_payer === 'bhuvaji' ? 'bhuvaji' : 'devotee', ...common },
+             total: amount };
+  }
+
+  /** The block's own fields never belong in the parent payload. */
+  function stripPaidNow(data) {
+    const { paid_now, paid_payer, paid_amount, paid_devotee, paid_bapa,
+            paid_date, paid_receipt, ...rest } = data;
+    return rest;
+  }
 
   /* ============================================================
      ADD SEVARTHI — devotee + preference (one screen) → seva → day → contribution
@@ -116,7 +370,7 @@
     const host = () => document.getElementById('sevStep');
 
     openSheet({
-      title: 'Add Sevarthi',
+      title: 'Add Seva',
       body: `<div id="sevStep"></div>`,
       footer: `<button class="btn btn-outline" data-sheet-close>Close</button>`,
       async onMount() {
@@ -143,6 +397,7 @@
 
       host().innerHTML = `
         <form id="sevForm" novalidate>
+          ${existingDevoteeSearch()}
           <div class="form-group">
             <label class="form-label req" for="f_full_name">Full Name</label>
             <input class="form-input" id="f_full_name" name="full_name" autocomplete="name" value="${attr(inq.full_name || '')}">
@@ -179,6 +434,7 @@
 
       const form = document.getElementById('sevForm');
       bindLookupAdders(form);
+      bindExistingDevotee(form);
 
       const filterRow = document.getElementById('catFilterRow');
       const paintFilters = () => {
@@ -358,10 +614,13 @@
           </div>
           ${bhuvajiField(bapaDefault)}
           <div class="form-group"><label class="form-label" for="f_notes">Note</label><input class="form-input" id="f_notes" name="notes" data-translate></div>
+          ${paidNowField({ label: 'They are paying now' })}
         </form>`;
 
       const form = document.getElementById('sevForm');
       bindLookupAdders(form); UI.bindTranslate(form); bindBhuvajiToggle(form);
+      // Nothing is paid yet, so the whole contribution is what is due.
+      bindPaidNow(form, () => Number(form.amount_committed.value || 0));
 
       // Warn (do not block) when the mobile number already exists.
       const mobileInput = form.querySelector('[name=mobile]');
@@ -404,6 +663,12 @@
         const bapa = readBhuvajiAmount(data);
         if (bapa > total) return showFieldError(form, 'bhuvaji_planned_amount', "Bapa's share cannot exceed the total");
 
+        /* The seat and any money handed over go in one request, so the
+           server can write them in one transaction — the operator never
+           has to come back and find this sevarthi to record the cash. */
+        const paid = readPaidNow(data);
+        if (paid.error) return showFieldError(form, paid.field, paid.error);
+
         btn.disabled = true;
         btn.textContent = 'Saving…';
         try {
@@ -419,9 +684,11 @@
             amount_committed: total,
             bhuvaji_planned_amount: bapa,
             notes: data.notes,
+            payment: paid.payment || undefined,
           });
           closeSheet();
-          toast(`${res.full_name} added as sevarthi`, 'ok');
+          toast(`${res.full_name} added as sevarthi` +
+                (paid.payment ? ` — ${money(paid.total)} received` : ''), 'ok');
           if (typeof refreshPage === 'function') refreshPage();
         } catch (err) {
           btn.disabled = false;
@@ -655,7 +922,10 @@
             : `Recording <strong>${esc(money(total))}</strong> in two entries` +
               (over > 0 ? ` — <span style="color:var(--warning)">${esc(money(over))} above what is due</span>`
                : over < 0 ? ` — <span class="muted">${esc(money(-over))} would still be due</span>`
-               : ' — <span style="color:var(--success)">settles this seva in full</span>');
+               : ' — <span style="color:var(--success)">settles this seva in full</span>') +
+              autoFilledNote(document.getElementById('f_devotee_amount'),
+                             document.getElementById('f_bhuvaji_amount'),
+                             ["The devotee's share", "Bapa's share"]);
         }
 
         function applyMode() {
@@ -668,6 +938,12 @@
           r.addEventListener('change', applyMode));
         ['f_devotee_amount', 'f_bhuvaji_amount'].forEach((id) =>
           document.getElementById(id).addEventListener('input', paintTotal));
+        /* Type either side and the other covers the rest of what is due —
+           "he's giving ten lakh, Bapa covers the balance" is the whole
+           conversation at the counter. */
+        bindSplitBalance(document.getElementById('f_devotee_amount'),
+                         document.getElementById('f_bhuvaji_amount'),
+                         () => due, paintTotal);
         applyMode();
 
         sheet.querySelector('#paySave').addEventListener('click', async (e) => {
@@ -748,6 +1024,7 @@
           ${bhuvajiField(b.bhuvaji_planned_amount)}
           <div class="form-group"><label class="form-label" for="f_notes">Note</label>
             <input class="form-input" id="f_notes" name="notes" data-translate value="${attr(b.notes || '')}"></div>
+          ${b.status === 'cancelled' ? '' : paidNowField({ label: 'They are paying now' })}
         </form>`,
       footer: (b.status === 'cancelled' ? '' : `
         <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-right:auto">
@@ -767,6 +1044,11 @@
         if (saveBtn.disabled) return;
         const editForm = document.getElementById('editForm');
         bindBhuvajiToggle(editForm);
+        /* Raising a commitment and taking the extra there and then is one
+           conversation, so the due is read live off the field being
+           edited, net of whatever has already come in. */
+        bindPaidNow(editForm, () =>
+          Math.max(0, Number(editForm.amount_committed.value || 0) - (b.amount_paid || 0)));
         document.getElementById('f_amount_committed').addEventListener('input', () => {
           document.getElementById('editOverpaidHint').innerHTML =
             overpaidHint(b.amount_paid, document.getElementById('f_amount_committed').value);
@@ -778,6 +1060,8 @@
           const total = Number(data.amount_committed || 0);
           const bapa = readBhuvajiAmount(data);
           if (bapa > total) return showFieldError(form, 'bhuvaji_planned_amount', "Bapa's share cannot exceed the total");
+          const paid = readPaidNow(data);
+          if (paid.error) return showFieldError(form, paid.field, paid.error);
 
           e.currentTarget.disabled = true;
           e.currentTarget.textContent = 'Saving…';
@@ -785,8 +1069,11 @@
             await API.put(`/bookings/${bookingId}`, {
               amount_committed: total, bhuvaji_planned_amount: bapa, notes: data.notes,
             });
+            /* The edit lands first: money must never be recorded against
+               a commitment the save then failed to raise. */
+            if (paid.payment) await API.post('/payments', { booking_id: bookingId, ...paid.payment });
             closeSheet();
-            toast('Sevarthi updated', 'ok');
+            toast('Sevarthi updated' + (paid.payment ? ` — ${money(paid.total)} received` : ''), 'ok');
             if (typeof refreshPage === 'function') refreshPage();
           } catch (err) {
             e.currentTarget.disabled = false;
@@ -1239,7 +1526,7 @@
      ============================================================ */
   function quickAddMenu() {
     const items = [
-      ['Add Sevarthi', 'seat', () => addSevarthi()],
+      ['Add Seva', 'seat', () => addSevarthi()],
       ['Add Payment', 'rupee', () => addPayment()],
       ['Add Devotee', 'users', () => Pages.devotees.openForm()],
       ['Add Donation', 'gift', () => Pages.donations.openForm()],

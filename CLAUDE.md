@@ -170,7 +170,7 @@ unless explicitly asked — don't bolt on an auth system as a side effect of oth
 | `/api/lookups` | `GET /` · `POST /` · `PUT /:id` (rename) · `DELETE /:id` (soft) |
 | `/api/devotees` | `GET /` · `GET /:id` (profile: bookings + donations) · `POST /` (upsert by mobile) · `PUT /:id` |
 | `/api/poojas` | `GET /categories` · `GET /` · `GET /:id` (slots + FIFO ledger) · `POST /` · `PUT /:id` · `PUT /:id/dates` · `PUT /:id/dates/clear` · `PUT /slots/:slotId` · `DELETE /:id` |
-| `/api/bookings` | `GET /` · `GET /:id` · `POST /` · `PUT /:id` · `POST /:id/cancel` · `POST /:id/reassign` |
+| `/api/bookings` | `GET /` · `GET /:id` · `POST /` (optional `payment`) · `PUT /:id` · `POST /:id/cancel` · `POST /:id/reassign` |
 | `/api/payments` | `GET /` · `GET /by-day` · `GET /outstanding` · `POST /` (single **or** split) · `PUT /:id` · `DELETE /:id` |
 | `/api/donations` | `GET /` · `POST /` · `PUT /:id` · `DELETE /:id` |
 | `/api/visits` | list / create / update / delete |
@@ -445,11 +445,49 @@ split:  { booking_id, devotee_amount, bhuvaji_amount }      -- a zero side is om
 It returns `{ payment, payments[], booking_status }`; `payment` is the first row, kept
 for callers that expect one. Each row is audited separately and stays separately
 correctable through `PUT /api/payments/:id`, so the trail reads the same whether the
-money arrived in one visit or two. In the form (`Forms.paymentForm`) "Paid by" is
-Devotee / Bapa / **Both**, and Both swaps the single amount for two, prefilled from what
-Bapa still owes of `bhuvaji_planned_amount` with the remainder of the due falling to the
-devotee. Don't collapse this back to one amount plus a payer flag — that is what forced
-the operator to save twice.
+money arrived in one visit or two. Both shapes are parsed by
+`server/util/payment-entries.js` rather than by either route, so the two can never drift
+on what a valid payment is; `insertPaymentRows` deliberately opens **no** transaction of
+its own, because the booking route has to write the seat, the capacity increment and the
+payment inside one. Don't collapse a split back to one amount plus a payer flag — that
+is what forced the operator to save twice.
+
+**Money is recorded where it is handed over, never "come back for it later".** Anywhere
+a commitment is made or changed, the cash can go in with it:
+
+| Flow | How |
+|---|---|
+| Add Seva | `POST /api/bookings` takes an optional `payment` (same two shapes) and writes it in the *same* transaction as the seat — a booking that kept the patla but lost the cash would be worse than either failing. Audited as a payment in its own right. |
+| Edit Sevarthi | Raise the commitment and take the increase in one save. The `PUT` lands **first**, then the payment: money must never be recorded against a commitment the save then failed to raise. |
+| Record Payment | Devotee / Bapa / **Both**, as above. |
+| Add Devotee | "Save & add seva" hands the new devotee straight to Add Seva (via the `inquiry` preset) instead of stopping at the register. |
+
+The shared UI for this is `paidNowField()` / `bindPaidNow(form, dueOf)` /
+`readPaidNow(data)` / `stripPaidNow(data)` in `forms.js`. Its field names are prefixed
+`paid_*` so the block can sit in a form that already has an `amount` of its own (Add
+Seva's Total Contribution), and `stripPaidNow` keeps them out of the parent payload.
+`dueOf()` is a callback, not a number, because in Add Seva the due is the contribution
+field the operator is still typing into.
+
+**Wherever an amount is split, the form does the arithmetic** (`bindSplitBalance`). Type
+one side and the other fills with what is left of the due — "he's giving ten lakh, Bapa
+covers the balance" is the whole conversation at the counter. The moment the operator
+types into that second field it becomes theirs and the balancing stops; without that,
+clearing Bapa's share to zero would silently rewrite the sevarthi's, which is how
+two-way binding turns hostile. `autoFilledNote()` owns up to whichever side the form
+filled in — its `labels` are in field order, `[what a is, what b is]`. The same
+arithmetic is shown, one-way, under "Bapa is covering part of the amount": Bapa's share
+and the sevarthi's are two halves of the contribution, so entering one displays the
+other instead of leaving the operator to subtract.
+
+**"Sevarthi" is the person; "seva" is what they take.** The action is therefore **Add
+Seva** in every UI surface (dashboard tile, Mahotsav button, sheet title, quick-add) —
+the function is still `Forms.addSevarthi` and `data-add-sevarthi`. Its first step also
+carries `existingDevoteeSearch()` / `bindExistingDevotee()`: most seva after the first
+are taken by someone already registered, and retyping a name and number the trust
+already holds is both slower and a chance to create a near-duplicate. Picking a match
+fills the devotee fields and leaves them editable — `upsertDevotee` merges by mobile, so
+a correction made there updates the register rather than forking it.
 
 There is deliberately **no date filter** on this page — one was built and then removed
 at the trust's request. If it is asked for again, note that "filter by date" has two
