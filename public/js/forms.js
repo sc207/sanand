@@ -1232,7 +1232,24 @@
       const suggested = state.pooja.amount || 0;
       const budget = Number(state.budget || 0);
       const committedDefault = budget > 0 ? Math.max(budget, suggested) : (suggested || b.amount_committed);
-      const bapaDefault = budget > 0 && budget < suggested ? (suggested - budget) : 0;
+
+      /* Bapa's promised share must not evaporate because the sevarthi
+         changed seva. The API keeps it when the caller says nothing,
+         but this form always says something — it posts whatever its own
+         field holds — so defaulting that field to 0 silently cancelled
+         the promise on every move. Bapa's *payments* survived (they are
+         ledger rows), which is what made it easy to miss: only the
+         agreed share disappeared, and with it the Bapa-support prefill
+         that is calculated from it.
+
+         An explicit new signal still wins: if the operator has typed a
+         budget below what this seva suggests, the gap is what Bapa is
+         being asked to cover now. Otherwise carry the existing promise,
+         clamped to the new contribution so the form never opens in a
+         state the server would refuse. */
+      const gap = budget > 0 && budget < suggested ? (suggested - budget) : 0;
+      const carried = Math.min(Number(b.bhuvaji_planned_amount) || 0, committedDefault);
+      const bapaDefault = gap || carried;
 
       host().innerHTML = `
         <button class="btn btn-outline mg-btn-xs" data-back>${icon('chevron-left','ico-sm')} Back</button>
@@ -1252,7 +1269,13 @@
             <div id="rsnOverpaidHint">${overpaidHint(b.amount_paid, committedDefault)}</div>
           </div>
           ${bhuvajiField(bapaDefault)}
-          <div class="form-hint">Any payment already received (${esc(money(b.amount_paid))}) stays on this booking — only the seat and, if changed here, the amount move.</div>
+          ${carried > 0 && !gap ? `<div class="form-hint">
+            Bapa's agreed share of ${esc(money(b.bhuvaji_planned_amount))} has been carried over.
+            Clear the tick above if Bapa is no longer covering part of this seva.</div>` : ''}
+          <div class="form-hint" data-rsn-keeps>Any payment already received
+            (${esc(money(b.amount_paid))}${b.bappa_paid > 0
+              ? ', of which ' + esc(money(b.bappa_paid)) + ' from Bapa' : ''})
+            stays on this booking — only the seat and, if changed here, the amount move.</div>
         </form>`}`;
 
       host().querySelector('[data-back]').addEventListener('click', stepPickDay);
