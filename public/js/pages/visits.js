@@ -140,7 +140,10 @@
           <div class="stat-card-title">Today</div>
           <div class="stat-card-value">${esc(UI.num(t.today))}</div>
           <div class="mg-muted-xs">padhramni to make</div></div>
-          <span class="stat-ico due">${icon('temple')}</span></div>
+          ${/* home, not temple: a padhramni is Bappa going out TO a
+                devotee's house, so a mandir silhouette here reads as
+                "temple events today", which is a different thing. */''}
+          <span class="stat-ico due">${icon('home')}</span></div>
         <div class="stat"><div class="stat-text">
           <div class="stat-card-title">Next 7 days</div>
           <div class="stat-card-value">${esc(UI.num(t.week))}</div>
