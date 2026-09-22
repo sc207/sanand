@@ -227,51 +227,54 @@
     const rows = [...state.rows].sort(sorters[state.sort] || sorters.name);
     const pg = UI.paginate(rows, state.page);
 
+    /* Columns, for the same reason Payments has them: the register is
+       worked through a screen at a time, and a row that put a name at
+       the far left and one figure at the far right gave nothing to run
+       an eye down. Each heading sorts, and the sort select above stays
+       — it holds "Recently added", which is not a column. The two are
+       one piece of state, so clicking a heading moves the select with
+       it and neither can contradict the other. */
+    const money0 = (v) => (v ? esc(money(v)) : '<span class="muted">—</span>');
+
+    const COLUMNS = [
+      { key: 'name', label: 'Devotee', sortable: true, cell: (d) => `
+          <div class="dt-name">${esc(d.full_name)}
+            ${d.category ? `<span class="badge badge-gold">${esc(d.category)}</span>` : ''}
+            ${d.samaj ? `<span class="badge">${esc(d.samaj)}</span>` : ''}</div>
+          <div class="dt-sub">${d.mobile
+            ? `<span class="dt-nw">${icon('phone','ico-sm')}${esc(d.mobile)}</span>`
+            : `<span class="dt-nw is-missing">${icon('alert','ico-sm')}No mobile</span>`}</div>` },
+      { key: 'place', label: 'From', hideOn: 'sm', cell: (d) => {
+          const place = [d.city, d.mul_vatan && d.mul_vatan !== d.city ? 'mul ' + d.mul_vatan : null]
+            .filter(Boolean).join(' · ');
+          return place
+            ? `${esc(place)}${d.state && d.state !== 'Gujarat' ? `<div class="dt-sub">${esc(d.state)}</div>` : ''}`
+            : '<span class="muted">—</span>';
+        } },
+      { key: 'seva', label: 'Seva', type: 'num', sortable: true, cell: (d) => (d.booking_count
+          ? esc(num(d.booking_count))
+          : d.donation_total ? '<span class="muted">Donor</span>' : '<span class="muted">—</span>') },
+      { key: 'contributed', label: 'Contributed', type: 'money', sortable: true,
+        cell: (d) => money0((d.total_paid || 0) + (d.donation_total || 0)) },
+      { key: 'outstanding', label: 'Outstanding', type: 'money', sortable: true, cell: (d) => (d.outstanding > 0
+          ? `<span class="dt-due">${esc(money(d.outstanding))}</span>`
+          : '<span class="muted">—</span>') },
+    ];
+
     body.innerHTML = `
       <div class="card"><div class="card-header">
         <h2>${esc(num(rows.length))} devotee${rows.length === 1 ? '' : 's'}</h2>
         <span class="small muted">${esc((SORTS.find((s) => s[0] === state.sort) || [])[1] || '')}</span></div>
-        <div class="card-body" style="padding:0"><div class="list">
-        ${pg.slice.map((d) => {
-          const place = [d.city, d.mul_vatan && d.mul_vatan !== d.city ? 'mul ' + d.mul_vatan : null]
-            .filter(Boolean).join(' · ');
-          const hasRecord = d.booking_count || d.total_paid || d.donation_total || d.visit_count;
-
-          /* Collapsed: identifying a person, which is the job on this
-             page — name, who they are (category/samaj), the mobile that
-             *is* their identity key, and where they are from. Their
-             money and history are one tap down, not gone. */
-          const summary = `
-            <div class="row-main">
-              <div class="row-title">${esc(d.full_name)}
-                ${d.category ? `<span class="badge badge-gold">${esc(d.category)}</span>` : ''}
-                ${d.samaj ? `<span class="badge">${esc(d.samaj)}</span>` : ''}</div>
-              <div class="collect-meta">
-                ${d.mobile
-                  ? `<span class="is-phone">${icon('phone','ico-sm')} ${esc(d.mobile)}</span>`
-                  : `<span class="is-missing">${icon('alert','ico-sm')} No mobile</span>`}
-                ${place ? `<span>${esc(place)}</span>` : ''}
-                ${d.state && d.state !== 'Gujarat' ? `<span>${esc(d.state)}</span>` : ''}
-                ${d.booking_count
-                  ? `<span>${esc(num(d.booking_count))} seva</span>`
-                  : d.donation_total ? '<span>Donor</span>' : ''}
-              </div>
-            </div>
-            <div class="row-end collect-lead">
-              ${/* One number, and it is whichever one would make an operator
-                    act: what they still owe, else what they have given. */''}
-              <div class="lead-fig ${d.outstanding > 0 ? 'is-due' : ''}">
-                <span class="lead-k">${d.outstanding > 0 ? 'Outstanding'
-                  : (d.total_paid || d.donation_total) ? 'Contributed' : 'On register'}</span>
-                <span class="lead-v">${d.outstanding > 0 ? esc(money(d.outstanding))
-                  : (d.total_paid || d.donation_total)
-                    ? esc(money((d.total_paid || 0) + (d.donation_total || 0)))
-                    : '—'}</span>
-              </div>
-              <button class="btn btn-outline mg-btn-xs" data-dev="${attr(d.id)}">Profile</button>
-            </div>`;
-
-          const detail = `
+        <div class="card-body" style="padding:0">
+        ${UI.dataTable({
+          columns: COLUMNS,
+          rows: pg.slice,
+          sort: { key: state.sort, dir: state.sort === 'name' ? 'asc' : 'desc' },
+          label: 'Money, history and actions',
+          actions: (d) => `<button class="btn btn-outline mg-btn-xs" data-dev="${attr(d.id)}">Profile</button>`,
+          detail: (d) => {
+            const hasRecord = d.booking_count || d.total_paid || d.donation_total || d.visit_count;
+            return `
             ${/* total_paid is in the test too: a devotee whose only seva
                   was cancelled has booking_count 0 but money on record,
                   and hiding the band there hid the money. */
@@ -307,13 +310,20 @@
               <button class="btn btn-outline mg-btn-xs" data-edit="${attr(d.id)}">
                 ${icon('edit','ico-sm')} Edit devotee</button>
             </div>`;
-
-          return UI.expandableRow(summary, detail,
-            { itemClass: 'devotee-row', label: 'Money, history and actions' });
-        }).join('')}
-        </div></div>
+          },
+        })}
+        </div>
         ${UI.pager(pg, 'devotees')}
       </div>`;
+
+    /* A heading and the sort select are the same state. The select also
+       offers "Recently added", which no column shows, so it stays. */
+    UI.bindDataTable(body, (key) => {
+      state.sort = key; state.page = 1;
+      const sel = document.getElementById('devSort');
+      if (sel) sel.value = key;
+      paintList();
+    });
 
     body.querySelectorAll('[data-dev]').forEach((b) =>
       b.addEventListener('click', () => openProfile(b.getAttribute('data-dev'))));

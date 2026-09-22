@@ -176,7 +176,7 @@
      that started on one is left alone. */
   function bindExpanders(root) {
     if (!root) return;
-    root.querySelectorAll('.row-item[data-expand]').forEach((row) => {
+    root.querySelectorAll('.row-item[data-expand], .dt-row[data-expand]').forEach((row) => {
       row.addEventListener('click', (e) => {
         if (e.target.closest('button:not(.row-expand), a, input, select')) return;
         const id = row.getAttribute('data-expand');
@@ -186,7 +186,11 @@
         const open = panel.hidden;
         panel.hidden = !open;
         if (btn) btn.setAttribute('aria-expanded', String(open));
-        row.closest('.list-row').classList.toggle('is-open', open);
+        /* A card row lives inside a .list-row wrapper; a table row IS
+           the row and has no wrapper, so `closest` returns null and
+           this threw on every click — the panel still opened, which is
+           what hid it. Mark whichever element is actually the row. */
+        (row.closest('.list-row') || row).classList.toggle('is-open', open);
       });
     });
   }
@@ -675,6 +679,96 @@
   }
 
   /* ============================================================
+     THE WORKBENCH TABLE
+     ------------------------------------------------------------
+     Payments and the Devotee register are the two pages an operator
+     lives in, and both read as a wall. The reason turned out to be
+     structural rather than decorative: their collapsed row carried a
+     name and a mobile on the left and one figure on the right, with
+     roughly 800px of nothing between — so a screen of rows gave no
+     column to run your eye down and no way to compare two people.
+     Padhramni felt fine by contrast because its row carries five
+     things in fixed positions across the line, which is a table in
+     everything but name.
+
+     So these two get a real one: named columns, figures aligned in
+     their own right-hand columns and sortable by clicking the
+     heading. The disclosure the trust likes is kept exactly — the row
+     still opens a panel underneath, it is just a second <tr> now.
+
+     Under 860px a table is the wrong shape, so the same markup stacks:
+     thead is hidden and every cell prints its own heading from
+     `data-k`. One code path, so the phone can never drift from the
+     desktop.
+     ============================================================ */
+
+  /** Builds the table. `columns` is
+        { key, label, cell(row), type?: 'money'|'num', sortable?, hideOn?: 'sm' }
+      `type` right-aligns and sets tabular figures; `sortable` makes the
+      heading a button emitting `data-dtsort`. `actions(row)` fills the
+      last cell, which always also carries the disclosure chevron. */
+  function dataTable(o) {
+    const cols = (o.columns || []).filter(Boolean);
+    const rows = o.rows || [];
+    const sortKey = o.sort && o.sort.key;
+    const sortDir = (o.sort && o.sort.dir) || 'desc';
+    const head = cols.map((c) => {
+      const cls = [c.type === 'money' || c.type === 'num' ? 'n' : '',
+                   c.hideOn === 'sm' ? 'dt-sm-hide' : ''].filter(Boolean).join(' ');
+      if (!c.sortable) return `<th class="${cls}">${esc(c.label)}</th>`;
+      const on = c.key === sortKey;
+      return `<th class="${cls} dt-sortable" ${on ? `aria-sort="${sortDir === 'asc' ? 'ascending' : 'descending'}"` : ''}>
+        <button type="button" class="dt-sort ${on ? 'is-on' : ''}" data-dtsort="${attr(c.key)}">
+          <span>${esc(c.label)}</span>
+          ${icon(on && sortDir === 'asc' ? 'chevron-left' : 'chevron-right', 'ico-sm dt-caret')}
+        </button></th>`;
+    }).join('');
+
+    const body = rows.map((r) => {
+      const id = 'more-' + (++expandSeq);
+      const cells = cols.map((c) => {
+        const cls = [c.type === 'money' || c.type === 'num' ? 'n' : '',
+                     c.hideOn === 'sm' ? 'dt-sm-hide' : '', c.cellClass || ''].filter(Boolean).join(' ');
+        /* data-k is what the phone prints as the cell's own heading,
+           so a stacked row never becomes a column of bare values. */
+        return `<td class="${cls}" data-k="${attr(c.label)}">${c.cell(r)}</td>`;
+      }).join('');
+      /* Both names on purpose. `dt-row`/`dt-more` are the table's own,
+         and `row-item`/`row-more` are what the rest of the app calls a
+         summary strip and its disclosure panel — bindExpanders, the
+         [hidden] rule and every check that asks "is this row's panel
+         open" then work on a table row exactly as they do on a card. */
+      return `<tr class="dt-row row-item" data-expand="${id}">
+          ${cells}
+          <td class="dt-act">
+            <div class="dt-act-in">
+              ${o.actions ? o.actions(r) : ''}
+              <button type="button" class="icon-btn row-expand" data-expand="${id}" aria-expanded="false"
+                      aria-controls="${id}" title="${attr(o.label || 'More detail')}">
+                ${icon('chevron-right', 'ico-sm')}</button>
+            </div>
+          </td>
+        </tr>
+        <tr class="dt-more row-more" id="${id}" hidden>
+          <td colspan="${cols.length + 1}">${o.detail ? o.detail(r) : ''}</td>
+        </tr>`;
+    }).join('');
+
+    return `<div class="dt-wrap"><table class="custom-table dt">
+      <thead><tr>${head}<th class="dt-act"><span class="visually-hidden">Actions</span></th></tr></thead>
+      <tbody>${body}</tbody>
+    </table></div>`;
+  }
+
+  /** `go(key)` receives the column key that was clicked; the page owns
+      what that means, including flipping direction on a repeat click. */
+  function bindDataTable(root, go) {
+    if (!root || typeof go !== 'function') return;
+    root.querySelectorAll('[data-dtsort]').forEach((b) =>
+      b.addEventListener('click', () => go(b.getAttribute('data-dtsort'))));
+  }
+
+  /* ============================================================
      DATA-ENTRY KIT
      ------------------------------------------------------------
      Three pieces every entry sheet in the app now shares, so that a
@@ -775,7 +869,7 @@
     icon, loading, empty, errorState, progressBar, statusBadge,
     mobileError, coverage, coverageBadges, ago, whenDay,
     PAGE_SIZE, paginate, pager, bindPager,
-    expandableRow, bindExpanders,
+    expandableRow, bindExpanders, dataTable, bindDataTable,
     steps, bindSteps, moreFields, contextCard, sheetFooter, bindEnterFlow,
     toast, openSheet, closeSheet, confirmSheet,
     debounce, readForm, showFieldError, clearFieldErrors,

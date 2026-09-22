@@ -24,7 +24,49 @@
     search: '',
     page: 1,
     bookings: [],
+    /* Sorting is client-side and lives here: the filtered set is
+       already in memory, and a collector flips between "who owes most"
+       and "by name" constantly while working down a list. */
+    sortKey: 'outstanding',
+    sortDir: 'desc',
   };
+
+  /* One comparator per sortable column, each falling back to the name
+     so a column of equal figures still comes out in a stable,
+     meaningful order rather than whatever the query returned. */
+  const byName = (a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''));
+  const SORTERS = {
+    full_name: byName,
+    pooja_name: (a, b) => String(a.pooja_name || '').localeCompare(String(b.pooja_name || '')) || byName(a, b),
+    committed: (a, b) => (a.amount_committed || 0) - (b.amount_committed || 0) || byName(a, b),
+    devotee_paid: (a, b) => UI.coverage(a).devotee_paid - UI.coverage(b).devotee_paid || byName(a, b),
+    bappa_paid: (a, b) => (a.bappa_paid || 0) - (b.bappa_paid || 0) || byName(a, b),
+    outstanding: (a, b) => UI.coverage(a).outstanding - UI.coverage(b).outstanding || byName(a, b),
+  };
+
+  /* The sort keys are the table's, the export columns' keys are the
+     spreadsheet's, and they do not line up (full_name vs name). Naming
+     them here keeps the stamp on a printed sheet readable rather than
+     leaking a field name. */
+  const SORT_LABELS = {
+    full_name: 'Sevarthi', pooja_name: 'Seva', committed: 'Contribution',
+    devotee_paid: 'Sevarthi paid', bappa_paid: "Bapa's support", outstanding: 'Outstanding',
+  };
+
+  function sortRows(rows) {
+    const cmp = SORTERS[state.sortKey] || SORTERS.outstanding;
+    const out = [...rows].sort(cmp);
+    return state.sortDir === 'desc' ? out.reverse() : out;
+  }
+
+  /** A repeat click on the column in force flips it; a new column
+      starts descending for a figure and ascending for a name, which is
+      what each is actually useful as. */
+  function toggleSort(key) {
+    if (state.sortKey === key) state.sortDir = state.sortDir === 'desc' ? 'asc' : 'desc';
+    else { state.sortKey = key; state.sortDir = (key === 'full_name' || key === 'pooja_name') ? 'asc' : 'desc'; }
+    state.page = 1;
+  }
 
   /* Status is the booking's own; the other three are derived from the
      ledger (UI.coverage), which is why they are filters and not
@@ -91,8 +133,14 @@
      filter and search as the operator has them now — and the whole
      filtered set, not the 25 rows currently on screen. */
   function exportSpec() {
-    const rows = state.bookings.filter((b) => matches(b, state.filter));
+    /* Sorted the same way the screen is. The rule was "export what the
+       filter says, not what the page shows"; once a column can be
+       sorted, the order the operator put the list in is part of what
+       they are asking for, and a sheet that comes out in a different
+       order than the screen cannot be checked against it. */
+    const rows = sortRows(state.bookings.filter((b) => matches(b, state.filter)));
     const label = (FILTERS.find((f) => f[0] === state.filter) || [])[1] || 'All';
+    const sortLabel = SORT_LABELS[state.sortKey] || state.sortKey;
     const t = rows.reduce((a, b) => {
       const c = UI.coverage(b);
       a.committed += c.committed; a.devotee += c.devotee_paid; a.bappa += c.bappa_paid;
@@ -110,6 +158,7 @@
          was a report OF, a month after it left the printer. */
       meta: [
         ['Filter', label],
+        ['Sorted by', sortLabel + (state.sortDir === 'desc' ? ' (highest first)' : ' (A–Z / lowest first)')],
         ...(state.search ? [['Search', state.search]] : []),
         ['Sevarthi', UI.num(rows.length)],
         ['Contribution', money(t.committed)],
@@ -170,159 +219,175 @@
     await loadCollect();
   }
 
+  /* Fetching and painting are separate, because sorting and paging
+     change neither the rows nor the totals — only which of them are on
+     screen and in what order. Going back to the API for a header click
+     was both slower and a chance for the figures to shift under the
+     operator mid-sort. */
   async function loadCollect() {
     const body = document.getElementById('collectBody');
-    const summary = document.getElementById('collectSummary');
     if (!body) return;
     body.innerHTML = UI.loading(4);
-
     try {
       state.bookings = await API.bookings({ search: state.search || undefined });
-      const live = state.bookings.filter((b) => b.status !== 'cancelled');
-
-      /* Totals are for everything live, not just the current filter —
-         the operator wants the size of the job, then narrows to work
-         through it. Summed per booking, never netted. */
-      const t = live.reduce((a, b) => {
-        const c = UI.coverage(b);
-        a.committed += c.committed; a.covered += c.covered;
-        a.bappa += c.bappa_paid; a.outstanding += c.outstanding; a.excess += c.excess;
-        if (c.outstanding > 0) a.owing++;
-        return a;
-      }, { committed: 0, covered: 0, bappa: 0, outstanding: 0, excess: 0, owing: 0 });
-
-      summary.innerHTML = `
-        <div class="stats-grid">
-          <div class="stat"><div class="stat-text">
-            <div class="stat-card-title">Still to collect</div>
-            <div class="stat-card-value" style="color:var(--warning)">${esc(money(t.outstanding))}</div>
-            <div class="mg-muted-xs">from ${esc(num(t.owing))} sevarthi</div></div>
-            <span class="stat-ico due">${icon('clock')}</span></div>
-          <div class="stat"><div class="stat-text">
-            <div class="stat-card-title">Covered</div>
-            <div class="stat-card-value">${esc(money(t.covered))}</div>
-            <div class="mg-muted-xs">of ${esc(money(t.committed))} committed</div></div>
-            <span class="stat-ico grace">${icon('wallet')}</span></div>
-          <div class="stat"><div class="stat-text">
-            <div class="stat-card-title">Bapa's support</div>
-            <div class="stat-card-value">${esc(money(t.bappa))}</div>
-            <div class="mg-muted-xs">included in covered</div></div>
-            <span class="stat-ico people">${icon('diya')}</span></div>
-          <div class="stat"><div class="stat-text">
-            <div class="stat-card-title">Excess</div>
-            <div class="stat-card-value">${esc(money(t.excess))}</div>
-            <div class="mg-muted-xs">given above commitment</div></div>
-            <span class="stat-ico rupee">${icon('trending-up')}</span></div>
-        </div>`;
-
-      const rows = state.bookings.filter((b) => matches(b, state.filter));
-      if (!rows.length) {
-        body.innerHTML = UI.empty(
-          state.filter === 'due' ? 'Nothing outstanding' : 'Nothing here',
-          state.search ? 'No sevarthi matches that search.' : 'No sevarthi in this state.', 'rupee');
-        return;
-      }
-
-      /* A Mahotsav runs to hundreds of sevarthi; one endless list is
-         neither scannable nor quick to paint. UI.paginate clamps the
-         page for us when a filter change leaves it past the end. */
-      const pg = UI.paginate(rows, state.page);
-      state.page = pg.page;
-      const shown = pg.slice;
-
-      body.innerHTML = `
-        <div class="card">
-          <div class="card-header"><h2>${esc(num(rows.length))} sevarthi</h2>
-            <span class="small muted">${esc((FILTERS.find((f) => f[0] === state.filter) || [])[1] || '')}</span></div>
-          <div class="card-body" style="padding:0"><div class="list">
-            ${shown.map((b) => {
-              const c = UI.coverage(b);
-
-              /* Collapsed: the four things a collector needs to decide
-                 whether to ring this person — who, their state, the
-                 number to ring, and what is owed — plus the one button
-                 that follows. Everything else is one tap down. */
-              const summary = `
-                <div class="row-main">
-                  <div class="row-title">${esc(b.full_name)} ${UI.coverageBadges(b)}</div>
-                  <div class="collect-meta">
-                    ${b.mobile ? `<span class="is-phone">${icon('phone','ico-sm')} ${esc(b.mobile)}</span>`
-                               : `<span class="is-missing">${icon('alert','ico-sm')} No mobile</span>`}
-                  </div>
-                </div>
-                <div class="row-end collect-lead">
-                  <div class="lead-fig ${c.outstanding > 0 ? 'is-due' : c.excess > 0 ? 'is-extra' : 'is-ok'}">
-                    <span class="lead-k">${c.outstanding > 0 ? 'Outstanding' : c.excess > 0 ? 'Excess' : 'Covered'}</span>
-                    <span class="lead-v">${esc(money(c.outstanding > 0 ? c.outstanding
-                      : c.excess > 0 ? c.excess : c.committed))}</span>
-                  </div>
-                  ${b.status !== 'cancelled' && c.outstanding > 0
-                    ? `<button class="btn btn-primary mg-btn-xs" data-collect="${attr(b.id)}">Collect</button>` : ''}
-                </div>`;
-
-              const detail = `
-                <div class="collect-meta">
-                  <span>${esc(b.pooja_name)}</span>
-                  <span>Seva ${esc(fmtDate(b.slot_date))}</span>
-                  ${b.samaj ? `<span>${esc(b.samaj)}</span>` : ''}
-                </div>
-                <div class="fig-band">
-                  ${fig('Contribution', c.committed)}
-                  ${fig('Paid', c.devotee_paid)}
-                  ${c.bappa_paid ? fig("Bapa's support", c.bappa_paid, 'is-bapa') : ''}
-                  ${c.outstanding > 0 ? fig('Outstanding', c.outstanding, 'is-due')
-                    : c.excess > 0 ? fig('Excess', c.excess, 'is-extra')
-                    : `<div class="fig is-ok"><span class="fig-k">Status</span>
-                         <span class="fig-v">Fully covered</span></div>`}
-                </div>
-                <div class="collect-when">
-                  ${icon('clock','ico-sm')}
-                  <span>Registered ${esc(fmtDate(String(b.created_at || '').slice(0, 10)))}</span>
-                  <span>${b.last_payment_date
-                    ? `Last paid ${esc(fmtDate(b.last_payment_date))}` +
-                      (b.payment_count > 1 ? ` · ${esc(num(b.payment_count))} entries` : '')
-                    : 'No payment yet'}</span>
-                </div>
-                <div class="more-actions">
-                  ${b.status !== 'cancelled' && c.outstanding > 0
-                    ? `<button class="btn btn-outline mg-btn-xs" data-bapa="${attr(b.id)}">Bapa support</button>` : ''}
-                  <button class="btn btn-outline mg-btn-xs" data-ledger="${attr(b.id)}">
-                    ${icon('history','ico-sm')} Ledger</button>
-                  ${b.status !== 'cancelled' ? `<button class="btn btn-outline mg-btn-xs" data-editb="${attr(b.id)}">
-                    ${icon('edit','ico-sm')} Edit registration</button>` : ''}
-                  <button class="btn btn-outline mg-btn-xs" data-dev="${attr(b.devotee_id)}">
-                    ${icon('users','ico-sm')} Devotee</button>
-                </div>`;
-
-              return UI.expandableRow(summary, detail,
-                { itemClass: 'collect-row', label: 'Seva, split and dates' });
-            }).join('')}
-          </div></div>
-          ${UI.pager(pg, 'sevarthi')}
-        </div>`;
-
-      UI.bindExpanders(body);
-      UI.bindPager(body, (d) => {
-        state.page = pg.page + d;
-        loadCollect().then(() => {
-          const top = document.getElementById('collectBody');
-          if (top) top.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-      });
-
-      body.querySelectorAll('[data-collect]').forEach((el) =>
-        el.addEventListener('click', () => Forms.paymentForm(el.getAttribute('data-collect'))));
-      body.querySelectorAll('[data-bapa]').forEach((el) =>
-        el.addEventListener('click', () => Forms.paymentForm(el.getAttribute('data-bapa'), { payer_type: 'bhuvaji' })));
-      body.querySelectorAll('[data-ledger]').forEach((el) =>
-        el.addEventListener('click', () => Forms.bookingLedger(el.getAttribute('data-ledger'), loadCollect)));
-      body.querySelectorAll('[data-editb]').forEach((el) =>
-        el.addEventListener('click', () => Forms.editBooking(el.getAttribute('data-editb'))));
-      body.querySelectorAll('[data-dev]').forEach((el) =>
-        el.addEventListener('click', () => Pages.devotees.openProfile(el.getAttribute('data-dev'))));
+      paintSummary();
+      paintCollect();
     } catch (e) {
       body.innerHTML = UI.errorState(e.message);
     }
+  }
+
+  function paintSummary() {
+    const summary = document.getElementById('collectSummary');
+    if (!summary) return;
+    const live = state.bookings.filter((b) => b.status !== 'cancelled');
+
+    /* Totals are for everything live, not just the current filter —
+       the operator wants the size of the job, then narrows to work
+       through it. Summed per booking, never netted. */
+    const t = live.reduce((a, b) => {
+      const c = UI.coverage(b);
+      a.committed += c.committed; a.covered += c.covered;
+      a.bappa += c.bappa_paid; a.outstanding += c.outstanding; a.excess += c.excess;
+      if (c.outstanding > 0) a.owing++;
+      return a;
+    }, { committed: 0, covered: 0, bappa: 0, outstanding: 0, excess: 0, owing: 0 });
+
+    summary.innerHTML = `
+      <div class="stats-grid">
+        <div class="stat"><div class="stat-text">
+          <div class="stat-card-title">Still to collect</div>
+          <div class="stat-card-value" style="color:var(--warning)">${esc(money(t.outstanding))}</div>
+          <div class="mg-muted-xs">from ${esc(num(t.owing))} sevarthi</div></div>
+          <span class="stat-ico due">${icon('clock')}</span></div>
+        <div class="stat"><div class="stat-text">
+          <div class="stat-card-title">Covered</div>
+          <div class="stat-card-value">${esc(money(t.covered))}</div>
+          <div class="mg-muted-xs">of ${esc(money(t.committed))} committed</div></div>
+          <span class="stat-ico grace">${icon('wallet')}</span></div>
+        <div class="stat"><div class="stat-text">
+          <div class="stat-card-title">Bapa's support</div>
+          <div class="stat-card-value">${esc(money(t.bappa))}</div>
+          <div class="mg-muted-xs">included in covered</div></div>
+          <span class="stat-ico people">${icon('diya')}</span></div>
+        <div class="stat"><div class="stat-text">
+          <div class="stat-card-title">Excess</div>
+          <div class="stat-card-value">${esc(money(t.excess))}</div>
+          <div class="mg-muted-xs">given above commitment</div></div>
+          <span class="stat-ico rupee">${icon('trending-up')}</span></div>
+      </div>`;
+  }
+
+  function paintCollect() {
+    const body = document.getElementById('collectBody');
+    if (!body) return;
+
+    const rows = state.bookings.filter((b) => matches(b, state.filter));
+    if (!rows.length) {
+      body.innerHTML = UI.empty(
+        state.filter === 'due' ? 'Nothing outstanding' : 'Nothing here',
+        state.search ? 'No sevarthi matches that search.' : 'No sevarthi in this state.', 'rupee');
+      return;
+    }
+
+    /* A Mahotsav runs to hundreds of sevarthi; one endless list is
+       neither scannable nor quick to paint. UI.paginate clamps the
+       page for us when a filter change leaves it past the end. */
+    const pg = UI.paginate(sortRows(rows), state.page);
+    state.page = pg.page;
+    const shown = pg.slice;
+
+    /* Columns, not a wall. The old row put a name and a mobile at the
+       far left and one figure at the far right with ~800px of nothing
+       between, so a screenful gave nothing to run your eye down and no
+       way to compare two people. Every figure has its own right-aligned
+       column now and the page sorts by whichever one matters — the
+       difference between a list of people and a workbench. The panel
+       underneath is unchanged; it still holds what only matters once a
+       row has been chosen. */
+    const money0 = (v) => (v ? esc(money(v)) : '<span class="muted">—</span>');
+
+    const COLUMNS = [
+      { key: 'full_name', label: 'Sevarthi', sortable: true, cell: (b) => `
+          <div class="dt-name">${esc(b.full_name)} ${UI.coverageBadges(b)}</div>
+          <div class="dt-sub">${b.mobile
+            ? `<span class="dt-nw">${icon('phone','ico-sm')}${esc(b.mobile)}</span>`
+            : `<span class="dt-nw is-missing">${icon('alert','ico-sm')}No mobile</span>`}${
+            b.samaj ? ` · ${esc(b.samaj)}` : ''}</div>` },
+      { key: 'pooja_name', label: 'Seva', sortable: true, hideOn: 'sm', cell: (b) => `
+          <div>${esc(b.pooja_name)}</div>
+          <div class="dt-sub">${esc(b.slot_date ? fmtDate(b.slot_date) : UI.TBD)}</div>` },
+      { key: 'committed', label: 'Contribution', type: 'money', sortable: true,
+        cell: (b) => esc(money(b.amount_committed)) },
+      { key: 'devotee_paid', label: 'Paid', type: 'money', sortable: true,
+        cell: (b) => money0(UI.coverage(b).devotee_paid) },
+      { key: 'bappa_paid', label: 'Bapa', type: 'money', sortable: true, hideOn: 'sm',
+        cell: (b) => money0(UI.coverage(b).bappa_paid) },
+      { key: 'outstanding', label: 'Outstanding', type: 'money', sortable: true, cell: (b) => {
+          const c = UI.coverage(b);
+          if (c.outstanding > 0) return `<span class="dt-due">${esc(money(c.outstanding))}</span>`;
+          if (c.excess > 0) return `<span class="dt-extra">+${esc(money(c.excess))}</span>`;
+          return `<span class="dt-ok">Covered</span>`;
+        } },
+    ];
+
+    body.innerHTML = `
+      <div class="card">
+        <div class="card-header"><h2>${esc(num(rows.length))} sevarthi</h2>
+          <span class="small muted">${esc((FILTERS.find((f) => f[0] === state.filter) || [])[1] || '')}</span></div>
+        <div class="card-body" style="padding:0">
+          ${UI.dataTable({
+            columns: COLUMNS,
+            rows: shown,
+            sort: { key: state.sortKey, dir: state.sortDir },
+            label: 'Dates and actions',
+            actions: (b) => (b.status !== 'cancelled' && UI.coverage(b).outstanding > 0
+              ? `<button class="btn btn-primary mg-btn-xs" data-collect="${attr(b.id)}">Collect</button>` : ''),
+            detail: (b) => {
+              const c = UI.coverage(b);
+              return `
+              <div class="collect-when">
+                ${icon('clock','ico-sm')}
+                <span>Registered ${esc(fmtDate(String(b.created_at || '').slice(0, 10)))}</span>
+                <span>${b.last_payment_date
+                  ? `Last paid ${esc(fmtDate(b.last_payment_date))}` +
+                    (b.payment_count > 1 ? ` · ${esc(num(b.payment_count))} entries` : '')
+                  : 'No payment yet'}</span>
+              </div>
+              <div class="more-actions">
+                ${b.status !== 'cancelled' && c.outstanding > 0
+                  ? `<button class="btn btn-outline mg-btn-xs" data-bapa="${attr(b.id)}">Bapa support</button>` : ''}
+                <button class="btn btn-outline mg-btn-xs" data-ledger="${attr(b.id)}">
+                  ${icon('history','ico-sm')} Ledger</button>
+                ${b.status !== 'cancelled' ? `<button class="btn btn-outline mg-btn-xs" data-editb="${attr(b.id)}">
+                  ${icon('edit','ico-sm')} Edit registration</button>` : ''}
+                <button class="btn btn-outline mg-btn-xs" data-dev="${attr(b.devotee_id)}">
+                  ${icon('users','ico-sm')} Devotee</button>
+              </div>`;
+            },
+          })}
+        </div>
+        ${UI.pager(pg, 'sevarthi')}
+      </div>`;
+
+    UI.bindExpanders(body);
+    UI.bindDataTable(body, (key) => { toggleSort(key); paintCollect(); });
+    UI.bindPager(body, (d) => {
+      state.page = pg.page + d;
+      paintCollect();
+      body.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    body.querySelectorAll('[data-collect]').forEach((el) =>
+      el.addEventListener('click', () => Forms.paymentForm(el.getAttribute('data-collect'))));
+    body.querySelectorAll('[data-bapa]').forEach((el) =>
+      el.addEventListener('click', () => Forms.paymentForm(el.getAttribute('data-bapa'), { payer_type: 'bhuvaji' })));
+    body.querySelectorAll('[data-ledger]').forEach((el) =>
+      el.addEventListener('click', () => Forms.bookingLedger(el.getAttribute('data-ledger'), loadCollect)));
+    body.querySelectorAll('[data-editb]').forEach((el) =>
+      el.addEventListener('click', () => Forms.editBooking(el.getAttribute('data-editb'))));
+    body.querySelectorAll('[data-dev]').forEach((el) =>
+      el.addEventListener('click', () => Pages.devotees.openProfile(el.getAttribute('data-dev'))));
   }
 
   global.Pages = global.Pages || {};

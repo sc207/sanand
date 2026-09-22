@@ -292,17 +292,47 @@ Easy to get wrong, and it changes what a "day" means:
   `.form-actions` row at natural width. A card in the content column is ~1300px wide,
   so one field per line leaves it half empty and a `btn-block` Save spans the lot.
   Settings is the only page-level form; every other form lives in the sheet.
+- **Two shapes of list, and which one a page gets depends on the job.**
+  *Cards* (`UI.expandableRow`) suit a page you read one row at a time — Padhramni is a
+  diary, Donations a receipt book. *A table* (`UI.dataTable` + `UI.bindDataTable`) suits
+  a page you work down comparing rows, which is Payments and the Devotee register. Both
+  keep the same disclosure panel underneath, and `UI.bindExpanders` drives both: a table
+  row carries `dt-row row-item` and its panel `dt-more row-more`, so everything written
+  against the card shape — the `[hidden]` rule, `is-open`, the checks that ask whether a
+  row's panel is open — works unchanged. The panel is a **sibling `<tr>`**, not a child,
+  which is the one thing that differs; `row.nextElementSibling` is how you reach it, and
+  `bindExpanders` uses `(row.closest('.list-row') || row)` for the same reason.
+  The trust asked for this in as many words — those two pages "feel hard to manage" —
+  and the cause was structural, not decorative: their collapsed row put a name and a
+  mobile at the far left and one figure at the far right with ~800px of nothing between,
+  so a screenful gave no column to run an eye down and no way to compare two people. All
+  the figures were in the panel, one row at a time. Padhramni reads well by contrast
+  because it carries five things in fixed positions across the line — a table already.
+  A column with `type: 'money'|'num'` is right-aligned and tabular and takes only the
+  width its digits need (`width: 1%`), which hands the slack to the columns holding
+  words; `sortable: true` makes the heading a button. Under 860px the same markup stacks
+  and each cell prints its own heading from `data-k`, so the phone can never drift from
+  the desktop. `hideOn: 'sm'` drops a column there rather than squeezing it.
+- **Once a list can be sorted, the export follows the sort.** The rule was "export what
+  the filter says, not what the screen shows"; the order the operator put the list in is
+  part of what they are asking for, and a sheet that comes out in a different order than
+  the screen cannot be checked against it. `exportSpec()` sorts, and stamps "Sorted by"
+  into the meta alongside the filter. `parity.js` catches a regression here as a false
+  "column not shown on screen", because it compares the CSV's first row against the
+  screen's first row.
 - **Busy list rows disclose progressively — `UI.expandableRow(summary, detail, opts)`
   plus `UI.bindExpanders(root)`.** Payments, the devotee register and Padhramni all use
   it. The collapsed strip carries only what the page's job needs in order to *choose* a
   row, and one primary action; everything else opens underneath. What each page leads
   with is a deliberate answer to "what is this operator doing":
-    - **Payments** — collecting. Name + coverage badges, mobile, the outstanding
-      figure, `Collect`. The panel holds the seva and its date, samaj, the full
-      `.fig-band`, the registered/last-paid dates, and Bapa support / ledger / edit.
-    - **Devotee** — identifying a person. Name + category/samaj badges, mobile (it *is*
-      the dedup key), city, `Profile`. The panel holds the money band, donations,
-      padhramni count, register date and + Seva / Edit.
+    - **Payments** — collecting, and a table: Sevarthi (with badges and mobile), Seva,
+      Contribution, Paid, Bapa, Outstanding, then `Collect`. Every figure sorts. The
+      panel holds the registered/last-paid dates and Bapa support / ledger / edit.
+    - **Devotee** — identifying a person, also a table: Devotee (badges + mobile), From,
+      Seva, Contributed, Outstanding, then `Profile`. The panel holds the full money
+      band, donations, padhramni count, register date, the note and + Seva / Edit. Its
+      sort select stays: it offers "Recently added", which is not a column, and clicking
+      a heading moves the select with it so the two can never disagree.
     - **Padhramni** — a diary, not a register. Name + status, mobile, place, purpose,
       and a `.lead-fig` toned by how soon (`UI.whenDay` → Today / Tomorrow / In 3 days /
       overdue), plus the single next step (`Confirm` → `Mark done`). The panel holds
@@ -319,9 +349,12 @@ Easy to get wrong, and it changes what a "day" means:
   then `.form-group` on the split-payment fields). Anything that must stay visible while
   carrying the attribute has to say so explicitly, the way `.dv-inline-form:not([hidden])`
   does. A toggle that "does nothing" is almost always this.
-- **Row anatomy for list pages** (`.fig-band` + `.fig`/`.fig-k`/`.fig-v`, `.collect-meta`,
-  `.collect-when`, `.lead-fig`/`.lead-k`/`.lead-v`, in `app-extras.css`): a title line, a
-  wrapping meta line, a tinted band of *labelled* figure cells, then when it happened.
+- **Row anatomy for the *card* list pages** (`.fig-band` + `.fig`/`.fig-k`/`.fig-v`,
+  `.collect-meta`, `.collect-when`, `.lead-fig`/`.lead-k`/`.lead-v`, in
+  `app-extras.css`): a title line, a wrapping meta line, a tinted band of *labelled*
+  figure cells, then when it happened. Padhramni and Donations use this; Payments and
+  the Devotee register moved their figures into table columns and keep only
+  `.collect-when` and the actions in the panel.
   Three rules learned the hard way: never put figures on one run-on line (they become a
   wall of digits with no column to scan); never leave `.row-sub`'s ellipsis on a meta
   line that carries a mobile number or samaj — it cut off exactly what the operator

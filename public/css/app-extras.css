@@ -1199,3 +1199,124 @@ dialog#sheet::backdrop { background: transparent; }
   .ex-bar .ex-label { display: none; }
   .mg-page-actions > .btn { flex: 1 1 auto; }
 }
+
+/* ============================================================
+   THE WORKBENCH TABLE  (UI.dataTable)
+   ------------------------------------------------------------
+   Payments and the Devotee register are the two pages the trust
+   works in all day, and both read as a wall. The cause was
+   structural: the collapsed row put a name and a mobile at the far
+   left and one figure at the far right, with ~800px of nothing
+   between, so a screenful gave no column to run your eye down and no
+   way to compare two people. Padhramni reads well by comparison
+   because it carries five things in fixed positions across the line —
+   a table in everything but name.
+
+   These two get the real thing, built on the theme's own
+   .custom-table, with the disclosure panel kept exactly as it was:
+   the row still opens a detail underneath, it is just a second <tr>.
+   ============================================================ */
+.visually-hidden {
+  position: absolute; clip-path: inset(50%); overflow: hidden;
+  width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; white-space: nowrap;
+}
+
+/* The wrapper scrolls sideways rather than letting the table push the
+   page wide — the content cap exists so two ends of a row stay near
+   each other, and a table that breaks it defeats the cap. */
+.dt-wrap { width: 100%; overflow-x: auto; }
+table.dt { width: 100%; }
+/* Figures take only the width their digits need, which hands the slack
+   to the two columns that hold words. Left to itself the browser split
+   seven columns evenly and starved the name — "Manoj Marvadi" wrapped
+   its badge onto a second line and its mobile onto a third, so no two
+   rows were the same height and the column stopped being a column. */
+table.dt th.n, table.dt td.n { width: 1%; }
+table.dt th:first-child { min-width: 14rem; }
+table.dt th:nth-child(2) { min-width: 11rem; }
+table.dt td { white-space: normal; vertical-align: top; padding: .75rem .6rem; }
+/* Seven columns at the theme's 1rem cell padding overflowed the content
+   cap by 40px, which scrolled the row's own actions off the right —
+   the chevron was there, just past the edge. */
+table.dt th { padding: .8rem .6rem; }
+table.dt td.n, table.dt th.n { text-align: right; white-space: nowrap; }
+table.dt tbody tr.dt-row { cursor: pointer; border-bottom: 0; }
+table.dt tbody tr.dt-row:hover { background: var(--warm-ivory); }
+/* The separator belongs under the pair (row + its panel), not between
+   them, or an open row looks like two unrelated rows. */
+table.dt tbody tr.dt-more { border-bottom: 1px solid var(--warm-border); }
+table.dt tbody tr.dt-more > td { padding: 0 .9rem 1rem; background: var(--warm-ivory); }
+table.dt tbody tr.dt-row:has(+ .dt-more[hidden]) { border-bottom: 1px solid var(--warm-border); }
+table.dt tbody tr:last-child { border-bottom: 0; }
+
+/* Primary cell: a name with its badges, and the number to ring under
+   it. Two lines in one column beats two columns that always move
+   together. */
+.dt-name { font-weight: 700; color: var(--dark-brown); display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.dt-sub { font-size: .78rem; color: var(--muted-brown); margin-top: .15rem; }
+/* The mark and the number it labels are one thing and must break as
+   one. Two separate faults did this: a wrapping flex row put the glyph
+   on its own line, and `.ico` is `display: block` app-wide — so even
+   inside a nowrap span it still took a line of its own. Both have to
+   be undone; fixing only the flex left the glyph exactly where it was. */
+.dt-sub .ico { display: inline-block; width: 13px; height: 13px;
+               vertical-align: -2px; margin-right: .15rem; }
+.dt-sub .dt-nw { white-space: nowrap; }
+.dt-sub .is-missing { color: var(--warning); }
+/* A figure that is owed, or given beyond the commitment, is the one
+   thing on the row that changes what the operator does next. */
+.dt-due { color: var(--danger); font-weight: 700; }
+.dt-extra { color: var(--saffron); font-weight: 700; }
+.dt-ok { color: var(--success); font-weight: 600; font-size: .82rem; }
+
+/* Sortable heading. A whole-cell button, so the target is the heading
+   rather than the caret. */
+.dt-sort {
+  display: inline-flex; align-items: center; gap: .25rem;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit;
+}
+th.n .dt-sort { flex-direction: row-reverse; }
+.dt-sort .dt-caret { opacity: 0; transition: opacity var(--transition-fast), transform var(--transition-fast); }
+.dt-sort:hover .dt-caret { opacity: .45; }
+.dt-sort.is-on { color: var(--primary-maroon); }
+.dt-sort.is-on .dt-caret { opacity: 1; transform: rotate(90deg); }
+.dt-sort:focus-visible { outline: 2px solid var(--antique-gold); outline-offset: 2px; }
+
+/* The rows also carry .row-item / .row-more so the app's shared
+   disclosure machinery treats them like any other row; those classes
+   are styled for cards, so the card styling is undone here. */
+table.dt tr.row-item, table.dt tr.row-more { display: table-row; padding: 0; border-radius: 0; }
+
+/* Actions hug the right edge and never wrap under the figures. */
+table.dt td.dt-act, table.dt th.dt-act { width: 1%; white-space: nowrap; text-align: right; }
+.dt-act-in { display: inline-flex; align-items: center; gap: .35rem; justify-content: flex-end; }
+
+/* ---- under 860px a table is the wrong shape, so it stacks ----
+   Same markup: thead goes, every row becomes a card, and each cell
+   prints its own heading from data-k so no value is left bare. */
+@media (max-width: 860px) {
+  .dt-wrap { overflow-x: visible; }
+  table.dt, table.dt thead, table.dt tbody, table.dt tr, table.dt td, table.dt th { display: block; }
+  table.dt thead { display: none; }
+  table.dt tbody tr.dt-row {
+    border-bottom: 1px solid var(--warm-border);
+    padding: .85rem 1rem .6rem;
+    display: grid; grid-template-columns: 1fr 1fr; gap: .1rem .8rem;
+  }
+  table.dt tbody tr.dt-row:has(+ .dt-more:not([hidden])) { border-bottom: 0; }
+  table.dt td { padding: .15rem 0; }
+  /* The name spans the row and keeps no label — it is obviously the
+     name. Every other cell shows what it is. */
+  table.dt td:first-child { grid-column: 1 / -1; margin-bottom: .3rem; }
+  table.dt td:not(:first-child):not(.dt-act)::before {
+    content: attr(data-k);
+    display: block; font-size: .68rem; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; color: var(--muted-brown);
+  }
+  table.dt td.n { text-align: left; }
+  table.dt td.dt-sm-hide { display: none; }
+  table.dt td.dt-act { grid-column: 1 / -1; margin-top: .55rem; text-align: left; }
+  .dt-act-in { width: 100%; justify-content: space-between; }
+  table.dt tbody tr.dt-more > td { padding: 0 1rem 1rem; }
+}
