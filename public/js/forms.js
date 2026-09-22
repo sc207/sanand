@@ -439,8 +439,13 @@
       const filterRow = document.getElementById('catFilterRow');
       const paintFilters = () => {
         filterRow.innerHTML = CAT_FILTERS.map(([key, label]) => `
-          <button type="button" class="badge ${catFilter === key ? 'badge-maroon' : ''}"
-                  data-catf="${attr(key)}" style="cursor:pointer;border:1px solid var(--warm-border)">${esc(label)}</button>`
+          ${/* Same active-filter look as every other filter row in the
+                app (Payments, Padhramni): solid maroon for the one in
+                force, outline for the rest. A pill whose selected state
+                was another pill of nearly the same colour read as four
+                identical chips. */''}
+          <button type="button" class="btn mg-btn-xs ${catFilter === key ? 'btn-primary' : 'btn-outline'}"
+                  data-catf="${attr(key)}">${esc(label)}</button>`
         ).join('');
         filterRow.querySelectorAll('[data-catf]').forEach((b) =>
           b.addEventListener('click', () => {
@@ -1154,8 +1159,8 @@
       const filterRow = document.getElementById('catFilterRow');
       const paintFilters = () => {
         filterRow.innerHTML = CAT_FILTERS.map(([key, label]) => `
-          <button type="button" class="badge ${state.catFilter === key ? 'badge-maroon' : ''}"
-                  data-catf="${attr(key)}" style="cursor:pointer;border:1px solid var(--warm-border)">${esc(label)}</button>`
+          <button type="button" class="btn mg-btn-xs ${state.catFilter === key ? 'btn-primary' : 'btn-outline'}"
+                  data-catf="${attr(key)}">${esc(label)}</button>`
         ).join('');
         filterRow.querySelectorAll('[data-catf]').forEach((btn) =>
           btn.addEventListener('click', () => { state.catFilter = btn.getAttribute('data-catf'); paintFilters(); paintResults(); }));

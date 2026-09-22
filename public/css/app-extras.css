@@ -723,7 +723,11 @@ dialog#sheet::backdrop { background: transparent; }
 .badge:not([class*="badge-"]) { background: var(--warm-cream); color: var(--dark-brown); }
 .badge-confirmed { background: var(--success-bg); color: var(--success); }
 .badge-pending   { background: var(--warning-bg); color: #9A5B06; }
-.badge-maroon    { background: var(--warm-cream); color: var(--dark-brown); }
+/* Maroon, as the name says and as styles.css had it. This sheet loads
+   last, so defining it as cream here quietly made it identical to a
+   plain .badge — and with it every calendar event type, the "Bappa
+   Supported" pill, the samaj chip and the audit trail's "update". */
+.badge-maroon    { background: rgba(107, 31, 42, 0.11); color: var(--primary-maroon); }
 .badge-gold      { background: var(--gold-bg);    color: #8A6A16; }
 .badge-ok        { background: var(--success-bg); color: var(--success); }
 .badge-info      { background: var(--saffron-bg); color: var(--saffron); }

@@ -308,6 +308,13 @@ Easy to get wrong, and it changes what a "day" means:
   `window.__boot(pct, msg)` is the progress hook; the `<script>` tags between the page
   bundles call it. It is defined by the loader, so always call it guarded
   (`window.__boot && window.__boot(...)`).
+- **A filter row marks its active choice with `btn-primary` against `btn-outline`** —
+  solid maroon versus outline. Payments, Padhramni and Add Seva's "Matching seva" all
+  use it; a new filter row should too. Add Seva's row used to be `.badge` pills whose
+  selected state was `.badge-maroon`, which app-extras.css had (wrongly) redefined as
+  the same cream as a plain badge — four identical chips with no way to tell which was
+  in force. If a "selected" state is invisible, check whether this sheet has overridden
+  the variant that was carrying it: it loads last, so anything it redefines wins.
 - **`data-page` is reserved by the router.** `app.js` has a delegated
   `document.addEventListener('click')` that calls `e.target.closest('[data-page]')` and
   navigates, so *any* element carrying that attribute anywhere in the app becomes a nav
