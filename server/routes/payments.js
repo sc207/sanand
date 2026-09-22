@@ -128,6 +128,20 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'Enter an amount for the devotee, for Bapa, or both' });
   }
 
+  /* A gift from Bapa is the whole seva, so nothing is ever collected
+     from the sevarthi against it. This is the check that actually
+     holds the promise: the booking routes can refuse to *flag* a gift
+     over money already taken, but without this one the money could
+     simply arrive afterwards and the flag would be a lie. Named here
+     rather than silently converting the payer, because which of the
+     two the operator meant is not ours to guess. */
+  if (booking.is_gift && entries.some((e) => e.payer_type === 'devotee')) {
+    return res.status(400).json({
+      error: 'This seva is a gift from Bhuvaji Suresh Bapa, so nothing is collected from the sevarthi. ' +
+             "Record it as Bapa's, or clear the gift on Edit Sevarthi first.",
+    });
+  }
+
   /* Both rows land or neither does — a split that wrote only the
      devotee's half would understate what the trust actually holds. */
   const ids = db.transaction(() =>
@@ -166,6 +180,19 @@ router.put('/:id', (req, res) => {
   const amount = Number(b.amount ?? p.amount);
   if (!(amount > 0)) return res.status(400).json({ error: 'Enter an amount greater than zero' });
 
+  /* The same gift rule as a new payment, and it has to be here too: a
+     correction can change who paid, and re-labelling Bapa's money as
+     the sevarthi's is the other way a gift could quietly stop being
+     one. */
+  const payerNow = (b.payer_type ?? p.payer_type) === 'bhuvaji' ? 'bhuvaji' : 'devotee';
+  const onBooking = db.prepare(`SELECT is_gift FROM sevarthi_bookings WHERE id = ?`).get(p.booking_id);
+  if (onBooking && onBooking.is_gift && payerNow === 'devotee') {
+    return res.status(400).json({
+      error: 'This seva is a gift from Bhuvaji Suresh Bapa, so nothing is collected from the sevarthi. ' +
+             "Leave this entry as Bapa's, or clear the gift on Edit Sevarthi first.",
+    });
+  }
+
   db.prepare(`
     UPDATE payments SET amount=@amount, payer_type=@payer_type, payment_date=@payment_date,
            receipt_no=@receipt_no, notes=@notes
@@ -173,7 +200,7 @@ router.put('/:id', (req, res) => {
   `).run({
     id: p.id,
     amount,
-    payer_type: (b.payer_type ?? p.payer_type) === 'bhuvaji' ? 'bhuvaji' : 'devotee',
+    payer_type: payerNow,
     payment_date: b.payment_date || p.payment_date,
     receipt_no: ((b.receipt_no ?? p.receipt_no) || '').trim() || null,
     notes: ((b.notes ?? p.notes) || '').trim() || null,

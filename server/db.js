@@ -340,6 +340,77 @@ if (capacityDrift.changes > 0) {
   console.log(`[db] capacity_mode repaired on ${capacityDrift.changes} pooja(s) with a real patla limit`);
 }
 
+/* ------------------------------------------------------------
+   MIGRATION 4 — a seva can be a GIFT from Bhuvaji Suresh Bapa.
+
+   Bapa covering part of a contribution already existed
+   (bhuvaji_planned_amount). A gift is not a bigger version of that: it
+   is the trust saying this whole seva is Bapa's, so nothing is ever
+   collected from the sevarthi. The money reaches the ledger the same
+   way — payer_type 'bhuvaji' — but the intent differs, the trust counts
+   it separately, and the form must stop offering to take money from the
+   sevarthi at all.
+
+   So it is a flag, not something inferred. "Bapa agreed to cover the
+   whole amount" and "this seva is a gift from Bapa" would otherwise be
+   the same row, and only one of them should refuse a devotee payment.
+
+   The invariant, re-asserted by bookings.js on every write:
+     is_gift = 1  =>  bhuvaji_planned_amount = amount_committed
+                  AND no payment on the booking has payer_type 'devotee'
+   ------------------------------------------------------------ */
+const bookingCols = db.prepare(`PRAGMA table_info(sevarthi_bookings)`).all().map((c) => c.name);
+if (!bookingCols.includes('is_gift')) {
+  db.exec(`ALTER TABLE sevarthi_bookings ADD COLUMN is_gift INTEGER NOT NULL DEFAULT 0`);
+  console.log('[db] migration 4: added is_gift (a seva given entirely by Bapa)');
+}
+
+/* Invariant repair, checked every boot, for the same reason the
+   capacity one is: the seed scripts write bookings with raw SQL, and a
+   gift whose planned share drifted below the contribution would read
+   "Gift from Bapa" on screen while the page still asked the sevarthi
+   for the balance. A gift that has taken devotee money is no longer a
+   gift and is demoted rather than quietly kept — the money is the fact,
+   the label is not. */
+const giftDrift = db.prepare(`
+  UPDATE sevarthi_bookings SET bhuvaji_planned_amount = amount_committed
+   WHERE is_gift = 1 AND IFNULL(bhuvaji_planned_amount, 0) <> amount_committed
+`).run();
+if (giftDrift.changes > 0) {
+  console.log(`[db] gift share re-set to the full contribution on ${giftDrift.changes} booking(s)`);
+}
+const giftPaid = db.prepare(`
+  UPDATE sevarthi_bookings SET is_gift = 0
+   WHERE is_gift = 1 AND EXISTS (
+     SELECT 1 FROM payments WHERE booking_id = sevarthi_bookings.id AND payer_type = 'devotee')
+`).run();
+if (giftPaid.changes > 0) {
+  console.log(`[db] ${giftPaid.changes} booking(s) un-gifted: the sevarthi had paid into them`);
+}
+
+/* ------------------------------------------------------------
+   MIGRATION 5 — receipt numbers are issued, not typed.
+
+   Every payment and every donation gets one automatically, so nobody at
+   the counter has to keep the receipt book in their head. The counter
+   is per series and per calendar year of the entry's own date, which is
+   what keeps the sequence matching the books when something is entered
+   late. Issuing lives in util/receipts.js; only the table is here,
+   because that is the schema. Numbers are handed out inside the
+   caller's transaction, so a booking that fails to save never burns one.
+
+   There is deliberately NO unique index on receipt_no: databases in the
+   field may already hold hand-typed numbers, possibly duplicated, and a
+   migration that fails on real data is worse than one that cannot prove
+   uniqueness. The counter is the authority and only moves forward.
+   ------------------------------------------------------------ */
+db.exec(`
+  CREATE TABLE IF NOT EXISTS receipt_counters (
+    series   TEXT PRIMARY KEY,          -- 'P-2026', 'D-2026', …
+    next_no  INTEGER NOT NULL
+  );
+`);
+
 /* ---- first-run defaults ------------------------------------ */
 const seedLookup = db.prepare(
   `INSERT OR IGNORE INTO lookups (type, value, sort_order) VALUES (?, ?, ?)`

@@ -2,6 +2,7 @@
    from the same lookup table, so "add new category" works inline. */
 const express = require('express');
 const db = require('../db');
+const receipts = require('../util/receipts');
 const { log } = require('../middleware/audit');
 const { upsertDevotee } = require('./devotees');
 const { todayLocal, monthLocal } = require('../util/dates');
@@ -52,6 +53,7 @@ router.post('/', (req, res) => {
     }).id;
   }
 
+  const donationDate = b.donation_date || todayLocal();
   const info = db.prepare(`
     INSERT INTO donations (devotee_id, donor_name, mobile, category_id, amount, in_kind_item,
                            donation_date, receipt_no, notes, recorded_by)
@@ -64,8 +66,11 @@ router.post('/', (req, res) => {
     category_id: b.category_id || null,
     amount,
     in_kind_item: (b.in_kind_item || '').trim() || null,
-    donation_date: b.donation_date || todayLocal(),
-    receipt_no: (b.receipt_no || '').trim() || null,
+    donation_date: donationDate,
+    /* Issued, not typed — the same rule as a payment. A number the
+       operator does type is still honoured, for a trust carrying a
+       paper book across. */
+    receipt_no: receipts.ensure(b.receipt_no, 'D', donationDate),
     notes: (b.notes || '').trim() || null,
     recorded_by: req.get('X-User-Name') ? decodeURIComponent(req.get('X-User-Name')) : 'Unknown',
   });

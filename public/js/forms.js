@@ -72,72 +72,161 @@
       field sitting at 0 — the amount input only appears (and only ever
       gets sent) once the operator turns it on. Off means 0, unambiguously,
       never a stray figure left in a field nobody meant to fill in. */
-  function bhuvajiField(amount) {
-    const enabled = Number(amount || 0) > 0;
+  /* ------------------------------------------------------------
+     HOW THIS SEVA IS FUNDED
+     ------------------------------------------------------------
+     Three answers, not a checkbox. It used to be one tick — "Bapa is
+     covering part of this" — with an amount underneath, and the trust
+     then asked for a fourth thing the tick could not say: a seva given
+     outright by Bhuvaji Suresh Bapa. Typing the full contribution into
+     the "part" box would have stored the same numbers, but it is not
+     the same statement: a gift means nothing is ever asked of the
+     sevarthi, and the form has to stop offering to take it.
+
+     Three mutually exclusive options is exactly what a radio group is
+     for, and at three the guidance is to show them all rather than
+     hide them in a select — the choice is the point of this step.
+
+       sevarthi  the sevarthi gives the whole contribution
+       part      Bapa covers a share of it, the sevarthi the rest
+       gift      Bapa gives the whole seva
+
+     The two fields the server actually reads — bhuvaji_enabled and
+     bhuvaji_planned_amount — are kept exactly as they were, so every
+     existing caller and every existing check still works; `is_gift`
+     rides alongside. A gift sets the share from the contribution
+     rather than asking for it twice.
+     ------------------------------------------------------------ */
+  const FUND_MODES = [
+    ['sevarthi', 'Sevarthi gives it', 'The full contribution comes from the sevarthi.'],
+    ['part', 'Bapa covers part', 'Bapa covers a share; the sevarthi gives the rest.'],
+    ['gift', 'Gift from Bapa', 'Bhuvaji Suresh Bapa gives the whole seva. Nothing is collected from the sevarthi.'],
+  ];
+
+  const fundModeOf = (amount, isGift) =>
+    (isGift ? 'gift' : Number(amount || 0) > 0 ? 'part' : 'sevarthi');
+
+  function bhuvajiField(amount, opts) {
+    const o = opts || {};
+    const mode = fundModeOf(amount, o.isGift);
     /* Two things on this form mention Bapa, and they are not the same
        thing: this is what Bapa has *agreed to cover* — a promise, no
        money moved — and the block below is cash actually handed over
-       today. Read quickly, "Bapa is covering part of the amount" and a
-       payer button marked "Bapa" look like the same statement asked
-       twice, which is exactly how it read to the trust. The wording
-       here names it as an agreement, the wording there names it as a
-       handover, and bindPaidNow now derives the second from the first
-       so they cannot quietly disagree. */
+       today. The wording here names it as an agreement, the wording
+       there names it as a handover, and bindPaidNow derives the second
+       from the first so they cannot quietly disagree. */
     return `
       <div class="form-group entry-block" data-block="agreement">
-        <label class="small" style="display:flex;align-items:center;gap:.45rem;font-weight:500">
-          <input type="checkbox" name="bhuvaji_enabled" id="f_bhuvaji_enabled" ${enabled ? 'checked' : ''} style="width:auto;min-height:0">
-          Bhuvaji Suresh Bapa has agreed to cover part of this
-        </label>
-        <div id="bhuvajiAmountWrap" style="margin-top:.5rem${enabled ? '' : ';display:none'}">
+        <div class="fund-modes" role="radiogroup" aria-label="How this seva is funded">
+          ${FUND_MODES.map(([key, label, hint]) => `
+            <label class="fund-mode ${mode === key ? 'is-on' : ''}${key === 'gift' ? ' is-gift' : ''}">
+              <input type="radio" name="fund_mode" value="${attr(key)}" ${mode === key ? 'checked' : ''}
+                     ${o.giftBlocked && key === 'gift' ? 'disabled' : ''}>
+              <span class="fund-mode-t">
+                <span class="fund-mode-k">${key === 'gift' ? icon('diya', 'ico-sm') : ''}${esc(label)}</span>
+                <span class="fund-mode-h">${esc(hint)}</span>
+              </span>
+            </label>`).join('')}
+        </div>
+        ${o.giftBlocked ? `<div class="form-hint" style="color:var(--warning)">
+          ${icon('alert','ico-sm')} ${esc(o.giftBlocked)}</div>` : ''}
+
+        ${/* The server reads these two. The radio above only decides
+              what they hold and whether they are asked for. */''}
+        <input type="hidden" name="bhuvaji_enabled" id="f_bhuvaji_enabled" value="${mode === 'sevarthi' ? '' : '1'}">
+        <div id="bhuvajiAmountWrap" style="margin-top:.7rem${mode === 'part' ? '' : ';display:none'}">
           <label class="form-label" for="f_bhuvaji_planned_amount">Bapa's agreed share</label>
           <input class="form-input" id="f_bhuvaji_planned_amount" name="bhuvaji_planned_amount" type="number" min="0" step="1"
-                 value="${attr(enabled ? amount : 0)}" inputmode="numeric">
+                 value="${attr(Number(amount || 0))}" inputmode="numeric">
           <div class="form-hint">What was promised, not what has been handed over — record that below.</div>
           ${/* The other half of the arithmetic. Entering Bapa's share
                 without seeing what that leaves the sevarthi made the
                 operator work the subtraction out in their head. */''}
           <div class="form-hint" id="bhuvajiShareSplit" style="margin-top:.35rem"></div>
         </div>
+        <div class="form-hint" id="giftNote" style="margin-top:.6rem${mode === 'gift' ? '' : ';display:none'}"></div>
       </div>`;
   }
 
-  /** Wire the toggle: show/hide the amount field, and zero it out the
-      moment it's switched off so a leftover figure can never sneak
-      through unseen. Call once the form markup is in the DOM. */
+  /** Wire the choice. Keeps the hidden `bhuvaji_enabled` flag and the
+      share in step with it, so a figure left behind by a mode the
+      operator moved away from can never be read back. */
   function bindBhuvajiToggle(form) {
     const split = form.querySelector('#bhuvajiShareSplit');
+    const wrap = form.querySelector('#bhuvajiAmountWrap');
+    const giftNote = form.querySelector('#giftNote');
+    const modes = [...form.querySelectorAll('[name="fund_mode"]')];
+    if (!modes.length) return { paintShare() {} };
+    const modeOf = () => (form.querySelector('[name="fund_mode"]:checked') || {}).value || 'sevarthi';
+    const totalOf = () => Number((form.amount_committed || {}).value || 0);
 
     /* Contribution = the sevarthi's share + Bapa's. Only one of the two
        is ever typed, so show the other rather than leaving the operator
        to subtract. */
     function paintShare() {
-      if (!split) return;
-      const total = Number((form.amount_committed || {}).value || 0);
-      const bapa = Number(form.bhuvaji_planned_amount.value || 0);
-      if (!form.bhuvaji_enabled.checked || !total) { split.innerHTML = ''; return; }
-      split.innerHTML = bapa > total
-        ? `<span style="color:var(--warning)">That is more than the ${esc(money(total))} contribution.</span>`
-        : `Bapa covers <strong>${esc(money(bapa))}</strong>, the sevarthi gives
-           <strong>${esc(money(total - bapa))}</strong>.`;
+      const mode = modeOf();
+      const total = totalOf();
+      if (split) {
+        const bapa = Number(form.bhuvaji_planned_amount.value || 0);
+        split.innerHTML = (mode !== 'part' || !total) ? ''
+          : bapa > total
+            ? `<span style="color:var(--warning)">That is more than the ${esc(money(total))} contribution.</span>`
+            : `Bapa covers <strong>${esc(money(bapa))}</strong>, the sevarthi gives
+               <strong>${esc(money(total - bapa))}</strong>.`;
+      }
+      if (giftNote) {
+        giftNote.innerHTML = mode !== 'gift' ? ''
+          : total
+            ? `Bapa gives the whole <strong>${esc(money(total))}</strong>.
+               Nothing is collected from the sevarthi.`
+            : `<span style="color:var(--warning)">Enter the contribution above — a gift covers the whole of it.</span>`;
+      }
     }
 
-    form.bhuvaji_enabled.addEventListener('change', (e) => {
-      document.getElementById('bhuvajiAmountWrap').style.display = e.target.checked ? '' : 'none';
-      if (e.target.checked) form.bhuvaji_planned_amount.focus();
-      else form.bhuvaji_planned_amount.value = '0';
+    function apply() {
+      const mode = modeOf();
+      form.querySelectorAll('.fund-mode').forEach((el) =>
+        el.classList.toggle('is-on', el.querySelector('input').checked));
+      if (wrap) wrap.style.display = mode === 'part' ? '' : 'none';
+      if (giftNote) giftNote.style.display = mode === 'gift' ? '' : 'none';
+      form.bhuvaji_enabled.value = mode === 'sevarthi' ? '' : '1';
+      /* A gift is the whole contribution, so the share is never typed —
+         it follows the total. Leaving a stale part-share behind would
+         send the server a gift that does not cover its own seva. */
+      if (mode === 'gift') form.bhuvaji_planned_amount.value = String(totalOf() || 0);
+      if (mode === 'sevarthi') form.bhuvaji_planned_amount.value = '0';
       paintShare();
-    });
+    }
+
+    modes.forEach((r) => r.addEventListener('change', () => {
+      apply();
+      if (modeOf() === 'part') form.bhuvaji_planned_amount.focus();
+      form.dispatchEvent(new CustomEvent('fundmode', { detail: { mode: modeOf() } }));
+    }));
     form.bhuvaji_planned_amount.addEventListener('input', paintShare);
-    if (form.amount_committed) form.amount_committed.addEventListener('input', paintShare);
-    paintShare();
-    return { paintShare };
+    if (form.amount_committed) form.amount_committed.addEventListener('input', () => {
+      if (modeOf() === 'gift') form.bhuvaji_planned_amount.value = String(totalOf() || 0);
+      paintShare();
+      form.dispatchEvent(new CustomEvent('fundmode', { detail: { mode: modeOf() } }));
+    });
+    apply();
+    return { paintShare, modeOf };
   }
 
-  /** The amount only counts when the toggle is on — reading the number
+  /** What the form is claiming about funding, in the two shapes the
+      API takes. */
+  const readFundMode = (data) => (data.fund_mode || (data.bhuvaji_enabled ? 'part' : 'sevarthi'));
+  const isGiftMode = (data) => readFundMode(data) === 'gift';
+
+  /** The amount only counts when Bapa is involved — reading the number
       field directly would let a stale value slip through while it's
-      hidden and supposedly off. */
-  const readBhuvajiAmount = (data) => (data.bhuvaji_enabled ? Number(data.bhuvaji_planned_amount || 0) : 0);
+      hidden and supposedly off. A gift is always the whole
+      contribution, whatever the field happens to hold. */
+  const readBhuvajiAmount = (data) => {
+    const mode = readFundMode(data);
+    if (mode === 'gift') return Number(data.amount_committed || 0);
+    return mode === 'part' ? Number(data.bhuvaji_planned_amount || 0) : 0;
+  };
 
   /* ---------- picking someone already on the register ----------
      Most seva after the first are taken by people already registered,
@@ -266,13 +355,24 @@
       <div class="form-group entry-block" data-block="handover">
         <label class="small" style="display:flex;align-items:center;gap:.45rem;font-weight:500">
           <input type="checkbox" name="paid_now" id="f_paid_now" style="width:auto;min-height:0">
-          ${esc(o.label || 'Money received now')}
+          <span id="paidNowLabel">${esc(o.label || 'Money received now')}</span>
         </label>
         <div id="paidNowWrap" hidden style="margin-top:.6rem">
-          ${/* "Who handed it over" rather than a bare row of names: the
-                block above already says who agreed to pay, and without
-                a question these three buttons read as a second answer
-                to that same question instead of a different one. */''}
+          ${/* The agreement above already says who is funding this seva,
+                so asking "who handed it over" again is only a question
+                when the answer could differ — which is exactly when
+                Bapa is covering PART of it. On the other two it has one
+                possible answer and the row is a second, contradictory
+                way to say what was already said. The trust read it as
+                a duplicate, twice, and it was one.
+
+                So the row appears only for a shared contribution, and
+                the block's own label carries the answer in the other
+                two cases: "They are paying now" for the sevarthi,
+                "Bapa is handing it over now" for a gift. Nobody is
+                trapped — changing who pays means changing the
+                agreement, which is the honest edit anyway. */''}
+          <div id="paidNowPayer">
           <div class="form-label">Who handed it over</div>
           <div class="btn-row" style="margin:.35rem 0 .7rem">
             <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
@@ -281,6 +381,7 @@
               <input type="radio" name="paid_payer" value="bhuvaji" style="width:auto;min-height:0;margin-right:.35rem"> Bapa</label>
             <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
               <input type="radio" name="paid_payer" value="both" style="width:auto;min-height:0;margin-right:.35rem"> Both</label>
+          </div>
           </div>
           <div class="form-hint" id="paidNowAgreed" style="margin:-.45rem 0 .7rem"></div>
           <div id="paidNowSingle" class="form-group">
@@ -298,9 +399,18 @@
           <div class="form-row">
             <div class="form-group"><label class="form-label" for="f_paid_date">Date</label>
               <input class="form-input" id="f_paid_date" name="paid_date" type="date" value="${attr(todayISO())}"></div>
-            <div class="form-group"><label class="form-label" for="f_paid_receipt">Receipt No.</label>
-              <input class="form-input" id="f_paid_receipt" name="paid_receipt"></div>
+            <div></div>
           </div>
+          ${/* The receipt number is issued by the app now, so the
+                counter never has to keep the book in its head. The
+                box stays, folded away, because a trust carrying a
+                paper pad across still needs to write that number in
+                — it is simply no longer a question anyone is asked. */''}
+          ${UI.moreFields('Receipt number', `
+            <div class="form-group"><label class="form-label" for="f_paid_receipt">Receipt No.</label>
+              <input class="form-input" id="f_paid_receipt" name="paid_receipt" placeholder="Issued automatically">
+              <div class="form-hint">Leave this alone unless you are copying a number from a paper receipt book.</div></div>`,
+            { count: 'issued automatically' })}
           <p class="small" id="paidNowHint" style="margin:0"></p>
         </div>
       </div>`;
@@ -314,6 +424,10 @@
     const wrap = form.querySelector('#paidNowWrap');
     if (!wrap) return;
     const o = opts || {};
+    /* The caller's wording for this block lives in the markup, not in
+       these options — paidNowField put it there. Read it once so the
+       gift wording can be swapped in and back out again. */
+    const baseLabel = (form.querySelector('#paidNowLabel') || {}).textContent || 'Money received now';
     const single = form.querySelector('#paidNowSingle');
     const split = form.querySelector('#paidNowSplit');
     const hint = form.querySelector('#paidNowHint');
@@ -328,10 +442,21 @@
        the form (the operator may be editing it this second); anything
        Bapa has already given is passed in, because that is history and
        is not on this form at all. */
+    /* How this seva is funded, read live off the choice above. */
+    const fundMode = () =>
+      (form.querySelector('[name="fund_mode"]:checked') || {}).value
+      || (form.bhuvaji_enabled && form.bhuvaji_enabled.value ? 'part' : 'sevarthi');
+
     const bapaOwes = () => {
-      if (!form.bhuvaji_enabled) return 0;
-      const planned = form.bhuvaji_enabled.checked
-        ? Number((form.bhuvaji_planned_amount || {}).value || 0) : 0;
+      /* `bhuvaji_enabled` used to be the tick the operator clicked and
+         is now a hidden field the funding choice writes, so `.checked`
+         is undefined on it — reading that made every agreement look
+         like nothing was promised, and the split stopped prefilling. */
+      const mode = fundMode();
+      if (mode === 'sevarthi') return 0;
+      const planned = mode === 'gift'
+        ? Number((form.amount_committed || {}).value || 0)
+        : Number((form.bhuvaji_planned_amount || {}).value || 0);
       return Math.max(0, planned - Number(o.bapaPaid || 0));
     };
 
@@ -349,7 +474,34 @@
        actually happened at the counter may differ. */
     let payerTouched = false;
 
+    /* A gift is Bapa's, end to end, so "who handed it over" has one
+       answer and the server refuses any other. Rather than let the
+       operator pick Devotee and be told no on save, the choice is made
+       for them and the other two are put out of reach — with a line
+       saying why, because a disabled control that does not explain
+       itself is worse than one that argues. */
+    const giftModeOn = () =>
+      (form.querySelector('[name="fund_mode"]:checked') || {}).value === 'gift';
+
+    /* Only a shared contribution leaves a real question about who
+       handed the money over. The other two answer it themselves, so
+       the row goes and the block's label says who it is. */
+    function applyGiftLock() {
+      const mode = fundMode();
+      const row = form.querySelector('#paidNowPayer');
+      const label = form.querySelector('#paidNowLabel');
+      if (row) row.hidden = mode !== 'part';
+      if (mode === 'gift') { setPayer('bhuvaji'); payerTouched = false; }
+      if (mode === 'sevarthi') { setPayer('devotee'); payerTouched = false; }
+      if (label) {
+        label.textContent = mode === 'gift' ? 'Bapa is handing it over now' : baseLabel;
+      }
+    }
+
     function derivePayer() {
+      const mode = fundMode();
+      if (mode === 'gift') { setPayer('bhuvaji'); return; }
+      if (mode === 'sevarthi') { setPayer('devotee'); return; }
       if (payerTouched) return;
       const due = Number(dueOf() || 0);
       const owed = Math.min(bapaOwes(), due);
@@ -369,6 +521,11 @@
         it: Bapa promising the whole amount and the devotee handing it
         over is possible, and is usually a mistake. */
     function agreementNote() {
+      const mode = fundMode();
+      if (mode === 'gift') {
+        return `<span class="muted">Recorded as Bapa's, because this seva is his gift.</span>`;
+      }
+      if (mode === 'sevarthi') return '';
       const owed = bapaOwes();
       if (!owed) return '';
       const payer = payerOf();
@@ -408,6 +565,7 @@
     form.paid_now.addEventListener('change', (e) => {
       wrap.hidden = !e.target.checked;
       if (e.target.checked) {
+        applyGiftLock();
         derivePayer();
         paint();
         (payerOf() === 'both' ? form.paid_devotee : form.paid_amount).focus();
@@ -419,13 +577,13 @@
       form[n].addEventListener('input', paint));
 
     /* Change the agreement and the handover follows it, until the
-       operator overrules it. Both inputs matter: the share itself, and
-       the tick that turns it on and off. */
-    if (form.bhuvaji_enabled) {
-      const reflow = () => { derivePayer(); paint(); };
-      form.bhuvaji_enabled.addEventListener('change', reflow);
-      if (form.bhuvaji_planned_amount) form.bhuvaji_planned_amount.addEventListener('input', reflow);
+       operator overrules it. `fundmode` is fired by bindBhuvajiToggle
+       whenever the choice or the contribution moves. */
+    form.addEventListener('fundmode', () => { applyGiftLock(); derivePayer(); paint(); });
+    if (form.bhuvaji_planned_amount) {
+      form.bhuvaji_planned_amount.addEventListener('input', () => { derivePayer(); paint(); });
     }
+    applyGiftLock();
 
     // Type one side, the other covers the rest of the contribution.
     bindSplitBalance(form.paid_devotee, form.paid_bapa, dueOf, paint);
@@ -859,7 +1017,10 @@
 
         const total = Number(data.amount_committed || 0);
         const bapa = readBhuvajiAmount(data);
+        const gift = isGiftMode(data);
         if (bapa > total) return showFieldError(form, 'bhuvaji_planned_amount', "Bapa's share cannot exceed the total");
+        if (gift && !total) return showFieldError(form, 'amount_committed',
+          'Enter the contribution — a gift from Bapa covers the whole of it');
 
         /* The seat and any money handed over go in one request, so the
            server can write them in one transaction — the operator never
@@ -881,11 +1042,13 @@
             category_id: who.category_id,
             amount_committed: total,
             bhuvaji_planned_amount: bapa,
+            is_gift: gift ? 1 : 0,
             notes: data.notes,
             payment: paid.payment || undefined,
           });
           closeSheet();
           toast(`${res.full_name} added as sevarthi` +
+                (gift ? ' — a gift from Bapa' : '') +
                 (paid.payment ? ` — ${money(paid.total)} received` : ''), 'ok');
           if (typeof refreshPage === 'function') refreshPage();
         } catch (err) {
@@ -1099,10 +1262,19 @@
           <div class="form-row">
             <div class="form-group"><label class="form-label" for="f_payment_date">Date</label>
               <input class="form-input" id="f_payment_date" name="payment_date" type="date" value="${attr(todayISO())}"></div>
-            <div class="form-group"><label class="form-label" for="f_receipt_no">Receipt No.</label>
-              <input class="form-input" id="f_receipt_no" name="receipt_no"></div>
+            <div></div>
           </div>
           <div class="form-group"><label class="form-label" for="f_notes">Note</label><input class="form-input" id="f_notes" name="notes" data-translate></div>
+          ${/* The receipt number is issued by the app now, so the
+                counter never has to keep the book in its head. The
+                box stays, folded away, because a trust carrying a
+                paper pad across still needs to write that number in
+                — it is simply no longer a question anyone is asked. */''}
+          ${UI.moreFields('Receipt number', `
+            <div class="form-group"><label class="form-label" for="f_receipt_no">Receipt No.</label>
+              <input class="form-input" id="f_receipt_no" name="receipt_no" placeholder="Issued automatically">
+              <div class="form-hint">Leave this alone unless you are copying a number from a paper receipt book.</div></div>`,
+            { count: 'issued automatically' })}
           <p class="small muted" style="margin:0">All collections are recorded as cash.</p>
         </form>`,
       footer: `
@@ -1187,8 +1359,14 @@
           e.currentTarget.textContent = 'Saving…';
           try {
             const res = await API.post('/payments', body);
-            const n = (res.payments || [res.payment]).length;
-            toast(`${money(recorded)} recorded${n > 1 ? ' in 2 entries' : ''}` +
+            const rows = res.payments || [res.payment];
+            /* The number is issued now, so the operator is told what it
+               is rather than having to open the ledger to find out —
+               that is the whole of "so we don't have to worry about
+               it": not asked for, but never hidden either. */
+            const nos = rows.map((r) => r.receipt_no).filter(Boolean);
+            toast(`${money(recorded)} recorded${rows.length > 1 ? ' in 2 entries' : ''}` +
+                  (nos.length ? ` — receipt ${nos.join(' & ')}` : '') +
                   ` — ${res.booking_status.replace('_', ' ')}`, 'ok');
             afterBookingChange(opts);
           } catch (err) {
@@ -1224,7 +1402,14 @@
                    value="${attr(b.amount_committed)}" inputmode="numeric">
             <div id="editOverpaidHint">${overpaidHint(b.amount_paid, b.amount_committed)}</div>
           </div>
-          ${bhuvajiField(b.bhuvaji_planned_amount)}
+          ${/* A sevarthi who has already put money in can never be
+                turned into a gift — the trust's rule, and the server
+                refuses it. Saying so here, with the figure, beats
+                letting the operator pick it and be told no on save. */''}
+          ${bhuvajiField(b.bhuvaji_planned_amount, { isGift: b.is_gift,
+            giftBlocked: b.devotee_paid > 0
+              ? `${b.full_name} has already given ${money(b.devotee_paid)}, so this seva cannot be recorded as a gift. Remove that payment from the ledger first.`
+              : '' })}
           <div class="form-group"><label class="form-label" for="f_notes">Note</label>
             <input class="form-input" id="f_notes" name="notes" data-translate value="${attr(b.notes || '')}"></div>
           ${b.status === 'cancelled' ? '' : paidNowField({ label: 'They are paying now' })}
@@ -1263,6 +1448,7 @@
           const data = readForm(form);
           const total = Number(data.amount_committed || 0);
           const bapa = readBhuvajiAmount(data);
+          const gift = isGiftMode(data);
           if (bapa > total) return showFieldError(form, 'bhuvaji_planned_amount', "Bapa's share cannot exceed the total");
           const paid = readPaidNow(data);
           if (paid.error) return showFieldError(form, paid.field, paid.error);
@@ -1271,7 +1457,8 @@
           e.currentTarget.textContent = 'Saving…';
           try {
             await API.put(`/bookings/${bookingId}`, {
-              amount_committed: total, bhuvaji_planned_amount: bapa, notes: data.notes,
+              amount_committed: total, bhuvaji_planned_amount: bapa,
+              is_gift: gift ? 1 : 0, notes: data.notes,
             });
             /* The edit lands first: money must never be recorded against
                a commitment the save then failed to raise. */
@@ -1461,10 +1648,15 @@
                    value="${attr(committedDefault)}" inputmode="numeric">
             <div id="rsnOverpaidHint">${overpaidHint(b.amount_paid, committedDefault)}</div>
           </div>
-          ${bhuvajiField(bapaDefault)}
-          ${carried > 0 && !gap ? `<div class="form-hint">
+          ${bhuvajiField(bapaDefault, { isGift: b.is_gift,
+            giftBlocked: b.devotee_paid > 0
+              ? `${b.full_name} has already given ${money(b.devotee_paid)}, so this seva cannot be recorded as a gift.`
+              : '' })}
+          ${carried > 0 && !gap && !b.is_gift ? `<div class="form-hint">
             Bapa's agreed share of ${esc(money(b.bhuvaji_planned_amount))} has been carried over.
-            Clear the tick above if Bapa is no longer covering part of this seva.</div>` : ''}
+            Change the choice above if Bapa is no longer covering part of this seva.</div>` : ''}
+          ${b.is_gift ? `<div class="form-hint">
+            This seva is a gift from Bapa, and stays one after the move.</div>` : ''}
           <div class="form-hint" data-rsn-keeps>Any payment already received
             (${esc(money(b.amount_paid))}${b.bappa_paid > 0
               ? ', of which ' + esc(money(b.bappa_paid)) + ' from Bapa' : ''})
@@ -1492,6 +1684,7 @@
         const data = readForm(form);
         const total = Number(data.amount_committed || 0);
         const bapa = readBhuvajiAmount(data);
+        const gift = isGiftMode(data);
         if (bapa > total) return showFieldError(form, 'bhuvaji_planned_amount', "Bapa's share cannot exceed the total");
 
         e.currentTarget.disabled = true;
@@ -1499,6 +1692,7 @@
         try {
           await API.post(`/bookings/${bookingId}/reassign`, {
             slot_id: state.slotId, amount_committed: total, bhuvaji_planned_amount: bapa,
+            is_gift: gift ? 1 : 0,
           });
           toast('Sevarthi moved', 'ok');
           afterBookingChange(opts);
@@ -1559,7 +1753,8 @@
                       <div class="row-title">${esc(money(p.amount))}
                         ${p.payer_type === 'bhuvaji' ? '<span class="badge badge-gold">Bapa</span>' : ''}</div>
                       <div class="row-sub">${esc(fmtDate(p.payment_date))}
-                        ${p.receipt_no ? ' · #' + esc(p.receipt_no) : ''} · by ${esc(p.recorded_by || '—')}</div>
+                        ${p.receipt_no ? ` · <span class="rcpt">${esc(p.receipt_no)}</span>` : ''}
+                        · by ${esc(p.recorded_by || '—')}</div>
                       ${p.notes ? `<div class="row-sub">${esc(p.notes)}</div>` : ''}
                     </div>
                     <div class="row-actions">

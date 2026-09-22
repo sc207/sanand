@@ -146,6 +146,11 @@
     ['partial', 'Partial'],
     ['covered', 'Covered'],
     ['bappa', 'Bappa supported'],
+    /* A gift is its own thing, not a louder "Bappa supported": the
+       trust reports on seva Bapa gave outright separately from seva
+       Bapa helped with. It therefore gets its own chip rather than
+       being buried inside that one. */
+    ['gift', 'Gift from Bapa'],
     ['excess', 'Excess'],
   ];
 
@@ -158,7 +163,8 @@
       case 'pending': return b.status === 'pending';
       case 'partial': return b.status === 'partially_paid';
       case 'covered': return c.outstanding === 0;
-      case 'bappa': return c.bappa_supported;
+      case 'bappa': return c.bappa_supported && !b.is_gift;
+      case 'gift': return !!b.is_gift;
       case 'excess': return c.excess > 0;
       default: return true;
     }
@@ -189,6 +195,11 @@
     { key: 'outstanding', label: 'Outstanding', type: 'money', value: (b) => UI.coverage(b).outstanding },
     { key: 'excess',   label: 'Excess', print: false, type: 'money', value: (b) => UI.coverage(b).excess },
     { key: 'status',   label: 'Status', nowrap: true, value: (b) => STATUS_WORD[b.status] || b.status },
+    /* A column, because the accountant will be asked how much of the
+       Mahotsav Bapa gave outright, and that cannot be worked out from
+       the money alone — "Bapa's support" of the full amount looks the
+       same either way. */
+    { key: 'gift',     label: 'Gift from Bapa', nowrap: true, value: (b) => (b.is_gift ? 'Yes' : '') },
     { key: 'lastpaid', label: 'Last paid', print: false, type: 'date', value: (b) => b.last_payment_date || '' },
     { key: 'entries',  label: 'Payments', print: false, type: 'num', value: (b) => b.payment_count || 0 },
     { key: 'registered', label: 'Registered', print: false, type: 'date', value: (b) => String(b.created_at || '').slice(0, 10) },
@@ -444,7 +455,13 @@
       { key: 'devotee_paid', label: 'Paid', type: 'money', sortable: true,
         cell: (b) => money0(UI.coverage(b).devotee_paid) },
       { key: 'bappa_paid', label: 'Bapa', type: 'money', sortable: true, hideOn: 'sm',
-        cell: (b) => money0(UI.coverage(b).bappa_paid) },
+        /* On a gift the figure alone would read as Bapa having helped
+           with a large share. Naming it says which of the two it is,
+           and what is still to come is in the Outstanding column
+           anyway. */
+        cell: (b) => (b.is_gift
+          ? `<span class="dt-gift">${esc(money(UI.coverage(b).bappa_paid))}<span class="dt-gift-k">gift</span></span>`
+          : money0(UI.coverage(b).bappa_paid)) },
       { key: 'outstanding', label: 'Outstanding', type: 'money', sortable: true, cell: (b) => {
           const c = UI.coverage(b);
           if (c.outstanding > 0) return `<span class="dt-due">${esc(money(c.outstanding))}</span>`;

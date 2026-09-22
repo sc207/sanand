@@ -1320,3 +1320,70 @@ table.dt td.dt-act, table.dt th.dt-act { width: 1%; white-space: nowrap; text-al
   .dt-act-in { width: 100%; justify-content: space-between; }
   table.dt tbody tr.dt-more > td { padding: 0 1rem 1rem; }
 }
+
+/* ============================================================
+   A GIFT FROM BHUVAJI SURESH BAPA
+   ------------------------------------------------------------
+   Two additions, and both are about the same distinction: Bapa
+   helping with part of a contribution is a common, ordinary thing;
+   Bapa giving a whole seva is not, and the trust wants to see which
+   is which at a glance.
+   ============================================================ */
+
+/* The badge replaces "Bappa Supported" rather than joining it — a
+   gift already says everything that mark said. Gold, because it is
+   the app's colour for Bapa, and filled rather than tinted so it
+   reads as the strongest thing on the row. */
+.badge-gift {
+  background: linear-gradient(135deg, var(--antique-gold), var(--saffron, #C96A20));
+  color: #FFFFFF;
+  display: inline-flex; align-items: center; gap: .3rem;
+}
+.badge-gift .ico { width: 13px; height: 13px; display: inline-block; }
+
+/* How this seva is funded: three cards, not a checkbox. At three
+   options the whole set stays visible — the choice IS the step, and
+   burying two of them in a select would hide the one the trust just
+   asked for. They sit in a row on a desktop and stack on a phone. */
+.fund-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+@media (max-width: 620px) { .fund-modes { grid-template-columns: 1fr; } }
+.fund-mode {
+  display: flex; align-items: flex-start; gap: .5rem;
+  padding: .7rem .75rem;
+  border: 1px solid var(--warm-border); border-radius: var(--radius-sm);
+  background: var(--warm-ivory); cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.fund-mode:hover { border-color: var(--antique-gold); }
+.fund-mode input { width: auto; min-height: 0; margin: .15rem 0 0; flex: 0 0 auto; accent-color: var(--primary-maroon); }
+.fund-mode-t { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.fund-mode-k {
+  font-size: .85rem; font-weight: 700; color: var(--dark-brown);
+  display: inline-flex; align-items: center; gap: .3rem;
+}
+.fund-mode-k .ico { width: 14px; height: 14px; display: inline-block; }
+.fund-mode-h { font-size: .74rem; color: var(--muted-brown); line-height: 1.35; }
+/* The one in force is stated, not merely implied by a filled dot. */
+.fund-mode.is-on { border-color: var(--primary-maroon); background: #FFFFFF; box-shadow: var(--shadow-sm); }
+.fund-mode.is-on .fund-mode-k { color: var(--primary-maroon); }
+.fund-mode.is-gift.is-on { border-color: var(--antique-gold); }
+.fund-mode:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+.fund-mode:focus-within { outline: 2px solid var(--antique-gold); outline-offset: 2px; }
+
+/* A payer the gift has decided for us. Left looking ordinary, an
+   operator would click it and wonder why nothing happened. */
+.badge.is-locked { opacity: .45; cursor: not-allowed; }
+
+/* The Bapa column on a gifted seva: the figure, then what it is. */
+.dt-gift { display: inline-flex; align-items: baseline; gap: .35rem; justify-content: flex-end; }
+.dt-gift-k {
+  font-size: .62rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--antique-gold);
+}
+
+/* A receipt number is an identifier, so it is set in the figure face
+   and kept on one line — it gets read out over a phone. */
+.rcpt {
+  font-variant-numeric: tabular-nums; letter-spacing: .02em;
+  white-space: nowrap; color: var(--dark-brown); font-weight: 600;
+}

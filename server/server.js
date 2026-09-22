@@ -4,6 +4,14 @@ const path = require('path');
 const express = require('express');
 const db = require('./db');          // for an orderly close on shutdown
 
+/* Receipt numbers are issued, not typed. The repair pass runs here
+   rather than in db.js because it lives in util/receipts.js, which
+   requires db.js — calling it from there would be a cycle. It is
+   cheap and idempotent: it only touches rows that have no number,
+   and it lifts each series past anything hand-typed so an issued
+   number can never collide with one the trust wrote itself. */
+require('./util/receipts').backfillMissing();
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 

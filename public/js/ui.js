@@ -105,8 +105,16 @@
   function coverageBadges(row) {
     if (row.status === 'cancelled') return statusBadge('cancelled');
     const c = coverage(row);
+    /* A gift is Bapa giving the whole seva, which is a bigger thing
+       than Bapa helping with part of one — so it replaces the "Bappa
+       Supported" mark rather than sitting next to it and saying the
+       same thing twice. Putting it here means every screen that shows
+       a booking gets it at once: the payments table, the devotee's
+       profile, the ledger and the global search. */
     return statusBadge(row.status) +
-      (c.bappa_supported ? ' <span class="badge badge-maroon">Bappa Supported</span>' : '') +
+      (row.is_gift
+        ? ` <span class="badge badge-gift">${icon('diya', 'ico-sm')}Gift from Bapa</span>`
+        : c.bappa_supported ? ' <span class="badge badge-maroon">Bappa Supported</span>' : '') +
       (c.excess > 0 ? ` <span class="badge badge-pending">Excess ${esc(money(c.excess))}</span>` : '');
   }
 

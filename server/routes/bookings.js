@@ -28,6 +28,52 @@ function refreshStatus(bookingId) {
   return db.prepare(`SELECT * FROM sevarthi_bookings WHERE id = ?`).get(bookingId);
 }
 
+/* ------------------------------------------------------------
+   A GIFT FROM BHUVAJI SURESH BAPA
+   ------------------------------------------------------------
+   Bapa covering part of a contribution and Bapa giving the whole seva
+   are different things, and the difference is not the size of the
+   number. A gift means nothing is ever asked of the sevarthi, so the
+   flag has to refuse the two states that would make that untrue:
+
+     - a contribution the gift does not cover in full, and
+     - a sevarthi who has already put money in.
+
+   The trust's instruction was exact — no half payment turns into a
+   gift; only the full amount can be one. Both checks live here so the
+   three write paths (create, edit, reassign) cannot drift, and each
+   refusal says what to do instead rather than just saying no.
+
+   `wanted` is what the caller asked for, or undefined to keep whatever
+   the booking already is. Returns the value to store, or an Error with
+   a status, which the caller surfaces.
+   ------------------------------------------------------------ */
+function resolveGift(bookingId, wanted, current, amountCommitted, bhuvajiPlanned) {
+  const gift = wanted === undefined ? !!current : !!wanted;
+  if (!gift) return { gift: 0, bhuvaji: bhuvajiPlanned };
+
+  if (!(amountCommitted > 0)) {
+    return { error: 'Enter the contribution first — a gift covers the whole of it', status: 400 };
+  }
+  if (bookingId) {
+    const devoteePaid = db.prepare(
+      `SELECT IFNULL(SUM(amount),0) AS n FROM payments
+        WHERE booking_id = ? AND payer_type = 'devotee'`).get(bookingId).n;
+    if (devoteePaid > 0) {
+      return {
+        status: 400,
+        error: `This sevarthi has already given ₹${devoteePaid}, so the seva cannot be recorded ` +
+               `as a gift from Bapa. Remove that payment from the ledger first, or leave this ` +
+               `as Bapa covering part of the amount.`,
+      };
+    }
+  }
+  /* A gift IS Bapa's whole share, so the planned figure is not a
+     separate answer the operator can get wrong — it is set from the
+     contribution. */
+  return { gift: 1, bhuvaji: amountCommitted };
+}
+
 const BOOKING_SELECT = `
   SELECT b.*, ps.slot_date, ps.pooja_id, pe.name AS pooja_name, pe.category, pe.amount AS suggested_amount,
          d.full_name, d.mobile, d.city, d.state, d.mul_vatan,
@@ -87,9 +133,22 @@ router.post('/', (req, res) => {
     if (slot.pooja_status === 'closed') return res.status(409).json({ error: 'This pooja is closed for new sevarthi' });
 
     const amountCommitted = Number(b.amount_committed || 0);
-    const bhuvajiPlanned = Number(b.bhuvaji_planned_amount || 0);
+    let bhuvajiPlanned = Number(b.bhuvaji_planned_amount || 0);
     if (bhuvajiPlanned > amountCommitted) {
       return res.status(400).json({ error: "Bapa's share cannot exceed the total contribution" });
+    }
+    const g = resolveGift(null, b.is_gift, 0, amountCommitted, bhuvajiPlanned);
+    if (g.error) return res.status(g.status).json({ error: g.error });
+    bhuvajiPlanned = g.bhuvaji;
+    const isGift = g.gift;
+    /* A gift is Bapa's, end to end. Taking money from the sevarthi into
+       one would contradict the thing the flag exists to promise, and a
+       registration that half-succeeded is worse than one refused. */
+    if (isGift && (b.payment || {}).devotee_amount > 0) {
+      return res.status(400).json({ error: 'A gift from Bapa cannot take money from the sevarthi — record the whole amount as Bapa\'s' });
+    }
+    if (isGift && b.payment && b.payment.amount > 0 && b.payment.payer_type !== 'bhuvaji') {
+      return res.status(400).json({ error: 'A gift from Bapa cannot take money from the sevarthi — record the whole amount as Bapa\'s' });
     }
 
     let devoteeId = b.devotee_id;
@@ -114,13 +173,14 @@ router.post('/', (req, res) => {
         throw Object.assign(new Error(`${slot.slot_date} is fully booked — please pick another day.`), { status: 409 });
       }
       const info = db.prepare(`
-        INSERT INTO sevarthi_bookings (slot_id, devotee_id, amount_committed, bhuvaji_planned_amount, notes, status)
-        VALUES (@slot_id, @devotee_id, @amount_committed, @bhuvaji_planned_amount, @notes, 'pending')
+        INSERT INTO sevarthi_bookings (slot_id, devotee_id, amount_committed, bhuvaji_planned_amount, is_gift, notes, status)
+        VALUES (@slot_id, @devotee_id, @amount_committed, @bhuvaji_planned_amount, @is_gift, @notes, 'pending')
       `).run({
         slot_id: slot.id,
         devotee_id: devoteeId,
         amount_committed: amountCommitted,
         bhuvaji_planned_amount: bhuvajiPlanned,
+        is_gift: isGift,
         notes: (b.notes || '').trim() || null,
       });
       db.prepare(`UPDATE pooja_slots SET booked_count = booked_count + 1 WHERE id = ?`).run(slot.id);
@@ -137,8 +197,10 @@ router.post('/', (req, res) => {
     const row = db.prepare(BOOKING_SELECT + ` WHERE b.id = ?`).get(bookingId);
     log(req, {
       action: 'create', entity: 'booking', entityId: bookingId,
-      summary: `${row.full_name} added as sevarthi — ${row.pooja_name} on ${row.slot_date} (₹${amountCommitted})`,
-      details: { pooja: row.pooja_name, date: row.slot_date, amount_committed: amountCommitted, bhuvaji_planned: bhuvajiPlanned },
+      summary: `${row.full_name} added as sevarthi — ${row.pooja_name} on ${row.slot_date} (₹${amountCommitted})` +
+               (isGift ? ' — a gift from Bhuvaji Suresh Bapa' : ''),
+      details: { pooja: row.pooja_name, date: row.slot_date, amount_committed: amountCommitted,
+                 bhuvaji_planned: bhuvajiPlanned, gift_from_bapa: !!isGift },
     });
     /* The payment is audited as a payment in its own right, so the cash
        trail reads the same whether it arrived at registration or later. */
@@ -188,19 +250,28 @@ router.put('/:id', (req, res) => {
   const booking = db.prepare(`SELECT * FROM sevarthi_bookings WHERE id = ?`).get(req.params.id);
   if (!booking) return res.status(404).json({ error: 'Booking not found' });
   const amount = Number(req.body.amount_committed ?? booking.amount_committed);
-  const bhuvaji = Number(req.body.bhuvaji_planned_amount ?? booking.bhuvaji_planned_amount);
+  let bhuvaji = Number(req.body.bhuvaji_planned_amount ?? booking.bhuvaji_planned_amount);
   if (bhuvaji > amount) return res.status(400).json({ error: "Bapa's share cannot exceed the total contribution" });
+  /* Raising the contribution on a gift raises Bapa's share with it —
+     the whole point is that the sevarthi is never left a balance. */
+  const g = resolveGift(booking.id, req.body.is_gift, booking.is_gift, amount, bhuvaji);
+  if (g.error) return res.status(g.status).json({ error: g.error });
+  bhuvaji = g.bhuvaji;
 
   db.prepare(`
     UPDATE sevarthi_bookings SET amount_committed=@amount, bhuvaji_planned_amount=@bhuvaji,
-           notes=@notes, updated_at=datetime('now','localtime') WHERE id=@id
-  `).run({ id: booking.id, amount, bhuvaji, notes: req.body.notes ?? booking.notes });
+           is_gift=@is_gift, notes=@notes, updated_at=datetime('now','localtime') WHERE id=@id
+  `).run({ id: booking.id, amount, bhuvaji, is_gift: g.gift, notes: req.body.notes ?? booking.notes });
   refreshStatus(booking.id);
 
   const row = db.prepare(BOOKING_SELECT + ` WHERE b.id = ?`).get(booking.id);
   log(req, {
     action: 'update', entity: 'booking', entityId: booking.id,
-    summary: `Updated sevarthi booking for ${row.full_name} (₹${amount})`,
+    summary: `Updated sevarthi booking for ${row.full_name} (₹${amount})` +
+             (g.gift !== (booking.is_gift ? 1 : 0)
+               ? (g.gift ? ' — now a gift from Bhuvaji Suresh Bapa' : ' — no longer a gift from Bapa')
+               : ''),
+    details: { amount_committed: amount, bhuvaji_planned_amount: bhuvaji, gift_from_bapa: !!g.gift },
   });
   res.json(row);
 });
@@ -233,8 +304,14 @@ router.post('/:id/reassign', (req, res) => {
   `).get(booking.slot_id);
 
   const amount = Number(req.body.amount_committed ?? booking.amount_committed);
-  const bhuvaji = Number(req.body.bhuvaji_planned_amount ?? booking.bhuvaji_planned_amount);
+  let bhuvaji = Number(req.body.bhuvaji_planned_amount ?? booking.bhuvaji_planned_amount);
   if (bhuvaji > amount) return res.status(400).json({ error: "Bapa's share cannot exceed the total contribution" });
+  /* A gift travels with the sevarthi, and re-covers the new
+     contribution in full — moving to a dearer seva must not quietly
+     leave them a balance on something they were given. */
+  const g = resolveGift(booking.id, req.body.is_gift, booking.is_gift, amount, bhuvaji);
+  if (g.error) return res.status(g.status).json({ error: g.error });
+  bhuvaji = g.bhuvaji;
 
   const move = db.transaction(() => {
     if (newSlot.id !== oldSlot.id) {
@@ -250,8 +327,8 @@ router.post('/:id/reassign', (req, res) => {
     }
     db.prepare(`
       UPDATE sevarthi_bookings SET slot_id=@slot_id, amount_committed=@amount, bhuvaji_planned_amount=@bhuvaji,
-             updated_at=datetime('now','localtime') WHERE id=@id
-    `).run({ id: booking.id, slot_id: newSlot.id, amount, bhuvaji });
+             is_gift=@is_gift, updated_at=datetime('now','localtime') WHERE id=@id
+    `).run({ id: booking.id, slot_id: newSlot.id, amount, bhuvaji, is_gift: g.gift });
   });
 
   try {
@@ -270,7 +347,7 @@ router.post('/:id/reassign', (req, res) => {
     details: {
       from_pooja: oldSlot.pooja_name, from_slot: oldSlot.slot_date,
       to_pooja: row.pooja_name, to_slot: row.slot_date,
-      amount_committed: amount, bhuvaji_planned_amount: bhuvaji,
+      amount_committed: amount, bhuvaji_planned_amount: bhuvaji, gift_from_bapa: !!g.gift,
     },
   });
   res.json(row);

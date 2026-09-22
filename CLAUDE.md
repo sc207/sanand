@@ -715,6 +715,49 @@ all three matter:
     devotee handing it over is possible and usually a mistake, so the form says so in
     place rather than refusing the save.
 
+**A seva can be a GIFT from Bhuvaji Suresh Bapa, and that is not a bigger version of
+Bapa covering part of one.** `sevarthi_bookings.is_gift` is a flag, not something
+inferred: "Bapa agreed to cover the whole amount" and "this seva is Bapa's gift" would
+otherwise be the same row, and only one of them should refuse a devotee payment. The
+money still reaches the ledger as `payer_type = 'bhuvaji'` — nothing about the two rules
+in *Two rules everything else follows* changes. The invariant, re-asserted by
+`resolveGift()` in `bookings.js` on create, edit and reassign, and repaired at boot in
+`db.js`:
+
+```
+is_gift = 1  =>  bhuvaji_planned_amount = amount_committed
+             AND no payment on the booking has payer_type 'devotee'
+```
+
+The trust's rule, in their words: **no half payment turns into a gift; only the full
+amount can be one.** Four places enforce it, and all four are needed — the first three
+stop a gift being *declared* over money already taken, and the fourth stops the money
+arriving afterwards and making the flag a lie:
+  - `POST /api/bookings`, `PUT /api/bookings/:id`, `POST /api/bookings/:id/reassign`
+    refuse the flag when `devotee_paid > 0`, naming the figure and what to do instead.
+  - **`POST /api/payments` and `PUT /api/payments/:id` refuse a devotee row on a gift.**
+    The correction route matters as much as the create: re-labelling Bapa's money as the
+    sevarthi's is the other way a gift could quietly stop being one.
+Raising the contribution on a gift raises Bapa's share with it, and a gift travels
+through a reassign still covering its new seva in full — otherwise a move to a dearer
+seva would silently leave the sevarthi a balance on something they were given.
+
+**The funding choice is three options, not a checkbox** (`bhuvajiField` /
+`bindBhuvajiToggle`): *Sevarthi gives it* · *Bapa covers part* · *Gift from Bapa*. At
+three, all of them stay visible — the choice is the point of that step. `fund_mode` is
+the control; the two fields the server reads (`bhuvaji_enabled`, now a hidden input, and
+`bhuvaji_planned_amount`) are written from it, so every existing caller still works.
+Two things follow from the choice rather than being asked again:
+  - **The "Who handed it over" row only appears for *Bapa covers part*.** The agreement
+    above already says who is funding the seva; on the other two there is one possible
+    answer, and asking again is a second, contradictory way of saying what was just
+    said. The trust reported it as a duplicate, twice, and it was one. The block's own
+    label carries the answer instead — "They are paying now" / "Bapa is handing it over
+    now". Changing who pays means changing the agreement, which is the honest edit.
+  - `bapaOwes()` reads the mode, **not** `bhuvaji_enabled.checked` — that field is a
+    hidden input now, so `.checked` is `undefined` and reading it made every agreement
+    look like nothing had been promised.
+
 **Wherever an amount is split, the form does the arithmetic** (`bindSplitBalance`). Type
 one side and the other fills with what is left of the due — "he's giving ten lakh, Bapa
 covers the balance" is the whole conversation at the counter. The moment the operator
@@ -809,6 +852,7 @@ Use the schema's names in code and the trust's names in UI copy:
 | Covered | sevarthi paid + bappa support |
 | Pending / Partial / Covered | `pending` / `partially_paid` / `paid` |
 | Bappa Supported, Excess Contribution | not statuses — separate indicators derived alongside the status |
+| Gift from Bapa | `sevarthi_bookings.is_gift` — the whole seva given by Bapa, distinct from Bappa Support |
 
 ### Confirmed product decisions
 
@@ -832,6 +876,24 @@ Use the schema's names in code and the trust's names in UI copy:
   totals or their screens.
 - All collection is cash today; `payments` has no method column. Keep the ledger
   append-only, and add a method column only when another mode is actually introduced.
+- **Receipt numbers are issued, never typed** (`server/util/receipts.js`). The trust
+  asked not to have to think about them, which means more than generating one: *every*
+  path that records money gets one — a collection, money taken at registration, the
+  extra taken while raising a commitment, **each half of a split** (two ledger rows are
+  two entries, each correctable on its own, so one number across both would leave the
+  second uncorrectable on paper) and every donation. Series are `P-<year>-0001` and
+  `D-<year>-0001`, counted per kind and per **calendar year of the entry's own date**,
+  not of today: an entry made in January for money taken in December belongs in
+  December's book. `next()` runs inside the caller's transaction, so a booking that
+  fails to save never burns a number. A number typed by hand is still honoured, for a
+  trust carrying a paper book across — the field is folded away, not removed.
+  A receipt never changes once written: `PUT /api/payments/:id` passes the stored value
+  through, and a reassign never touches the ledger rows at all.
+  There is deliberately **no unique index** on `receipt_no` — databases in the field may
+  hold hand-typed duplicates, and a migration that fails on real data is worse than one
+  that cannot prove uniqueness (the same reasoning as `devotees.mobile`). The counter is
+  the authority; `backfillMissing()`, called from `server.js` at boot, fills blanks and
+  lifts each series past anything hand-typed so an issued number cannot collide.
 - The existing modules (Dashboard, Mahotsav, Payments, Devotees, Padhramni, Calendar,
   Donations, Invitation, Settings, Accounts & Access) each have working behaviour behind
   them — read what a module does before changing or dropping it as part of UI work.

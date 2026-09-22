@@ -18,6 +18,7 @@
 */
 const db = require('../db');
 const { todayLocal } = require('./dates');
+const receipts = require('./receipts');
 
 /** @returns {{ entries: Array<{amount:number,payer_type:string}> }|{ error: string }} */
 function readPaymentEntries(b) {
@@ -50,14 +51,24 @@ const INSERT = `
 /** Write the rows. Call inside the caller's transaction. */
 function insertPaymentRows(bookingId, entries, b, recordedBy) {
   const stmt = db.prepare(INSERT);
+  const date = (b && b.payment_date) || todayLocal();
+  const supplied = ((b && b.receipt_no) || '').trim();
   const common = {
     booking_id: bookingId,
-    payment_date: (b && b.payment_date) || todayLocal(),
-    receipt_no: ((b && b.receipt_no) || '').trim() || null,
+    payment_date: date,
     notes: ((b && b.notes) || '').trim() || null,
     recorded_by: recordedBy || 'Unknown',
   };
-  return entries.map((e) => Number(stmt.run({ ...common, ...e }).lastInsertRowid));
+  /* A split is two rows and therefore two receipts: they are two
+     separate entries in the ledger, each correctable on its own, and
+     one number across both would leave the second uncorrectable on
+     paper. A number typed by hand goes on the first row and the rest
+     are issued, because that is the one the operator has in front of
+     them. */
+  return entries.map((e, i) => Number(stmt.run({
+    ...common, ...e,
+    receipt_no: (i === 0 && supplied) ? supplied : receipts.next('P', date),
+  }).lastInsertRowid));
 }
 
 const actingUser = (req) =>
