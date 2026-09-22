@@ -1590,18 +1590,36 @@
                     <div class="row-sub">${[d.mobile, d.city, d.samaj].filter(Boolean).map(esc).join(' · ')}</div></div>
                   ${icon('chevron-right','ico-sm')}
                 </button>`).join('')}</div>` : ''}
+              ${/* Two ways out of a search hit, because the reason for
+                    looking someone up is not always the same one: take
+                    their money, or change what they are down for. The
+                    row used to go straight to Record Payment, which
+                    left Change Seva unreachable from here entirely —
+                    it lives on Edit Sevarthi, and nothing on this
+                    screen opened that. */''}
               ${bookings.length ? `<div class="section-title">Sevarthi bookings</div><div class="list">${bookings.slice(0, 8).map((b) => `
-                <button class="row-item" data-bk="${attr(b.id)}">
+                <div class="row-item gs-booking" style="cursor:default">
                   <div class="row-main"><div class="row-title">${esc(b.full_name)} ${UI.coverageBadges(b)}</div>
                     <div class="row-sub">${esc(b.pooja_name)} · ${esc(fmtDate(b.slot_date))}</div></div>
-                  <div class="row-end"><div class="row-amount">${esc(money(b.amount_paid))}</div>
-                    <div class="small muted">of ${esc(money(b.amount_committed))}</div></div>
-                </button>`).join('')}</div>` : ''}`;
+                  <div class="row-end">
+                    <div class="row-amount">${esc(money(b.amount_paid))}</div>
+                    <div class="small muted">of ${esc(money(b.amount_committed))}</div>
+                    <div class="btn-row" style="margin-top:.4rem;justify-content:flex-end">
+                      ${b.status !== 'cancelled' && b.amount_paid < b.amount_committed
+                        ? `<button class="btn btn-primary mg-btn-xs" data-bk="${attr(b.id)}">Collect</button>` : ''}
+                      <button class="btn btn-outline mg-btn-xs" data-bkedit="${attr(b.id)}">
+                        ${icon('edit','ico-sm')} Edit / Change Seva</button>
+                    </div>
+                  </div>
+                </div>`).join('')}</div>` : ''}`;
             box.querySelectorAll('[data-dev]').forEach((b) => b.addEventListener('click', () => {
               closeSheet(); Pages.devotees.openProfile(b.getAttribute('data-dev'));
             }));
             box.querySelectorAll('[data-bk]').forEach((b) => b.addEventListener('click', () => {
               paymentForm(b.getAttribute('data-bk'));
+            }));
+            box.querySelectorAll('[data-bkedit]').forEach((b) => b.addEventListener('click', () => {
+              editBooking(b.getAttribute('data-bkedit'));
             }));
           } catch (e) { box.innerHTML = UI.errorState(e.message); }
         }, 280);

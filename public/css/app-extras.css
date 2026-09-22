@@ -956,3 +956,14 @@ dialog#sheet::backdrop { background: transparent; }
 .donation-row .row-main { display: flex; flex-direction: column; gap: .4rem; }
 .donation-row .lead-v { color: var(--primary-maroon); }
 .collect-meta .is-missing { color: var(--warning); }
+
+/* A search hit carries two actions now (collect, or edit/change seva),
+   so it needs room to breathe and must stack rather than squeeze on a
+   phone. */
+.gs-booking { align-items: flex-start; gap: 1rem; }
+.gs-booking .row-end { display: flex; flex-direction: column; align-items: flex-end; }
+@media (max-width: 560px) {
+  .gs-booking { flex-wrap: wrap; }
+  .gs-booking .row-end { width: 100%; align-items: stretch; text-align: left; }
+  .gs-booking .btn-row { justify-content: flex-start !important; }
+}
