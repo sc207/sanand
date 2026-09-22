@@ -337,6 +337,15 @@ Easy to get wrong, and it changes what a "day" means:
   otherwise be executed as a formula when the file is opened.
   The PDF is the browser's own print engine via `openPrintDoc` — jsPDF/html2canvas need
   a CDN, so there is no other option offline, and none is needed.
+  **The export doubles as a specification of what the page must show.** A column that
+  carries a value the screen never displays is a gap between what the app knows and what
+  it tells the operator, and comparing the two found four: the devotee's note existed
+  only as a `title` tooltip (invisible on touch, and the text never on screen), the
+  donation's note was not rendered at all, the donations CSV had a phantom `City` column
+  (that table has no city and the list does not join the devotee, so it could never be
+  anything but empty), and the payments CSV wrote "Not fixed" for an undated seva where
+  the screen says `UI.TBD` — one state reading as two. When adding a column, add its
+  home on the page in the same change.
 - **A filter row marks its active choice with `btn-primary` against `btn-outline`** —
   solid maroon versus outline. Payments, Padhramni and Add Seva's "Matching seva" all
   use it; a new filter row should too. Add Seva's row used to be `.badge` pills whose

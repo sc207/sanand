@@ -68,7 +68,10 @@
     { key: 'mobile',   label: 'Mobile', nowrap: true, value: (b) => b.mobile || '' },
     { key: 'samaj',    label: 'Samaj',        value: (b) => b.samaj || '' },
     { key: 'pooja',    label: 'Seva',         value: (b) => b.pooja_name },
-    { key: 'date',     label: 'Seva date', type: 'date', value: (b) => b.slot_date || 'Not fixed' },
+    /* UI.TBD, not a second phrase of its own: an undated pooja is the
+       normal early state, and the export saying "Not fixed" where the
+       screen says "Date to be announced" made one state look like two. */
+    { key: 'date',     label: 'Seva date', type: 'date', value: (b) => b.slot_date || UI.TBD },
     { key: 'committed', label: 'Contribution', type: 'money', value: (b) => UI.coverage(b).committed },
     { key: 'devotee',  label: 'Paid by devotee', type: 'money', value: (b) => UI.coverage(b).devotee_paid },
     { key: 'bappa',    label: "Bapa's support",  type: 'money', value: (b) => UI.coverage(b).bappa_paid },

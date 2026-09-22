@@ -293,8 +293,13 @@
             <div class="collect-when">
               ${icon('clock','ico-sm')}
               <span>On the register since ${esc(fmtDate(String(d.created_at || '').slice(0, 10)))}</span>
-              ${d.notes ? `<span title="${attr(d.notes)}">Note on file</span>` : ''}
             </div>
+
+            ${/* The note used to be a `title` tooltip reading "Note on
+                  file" — invisible on a touch screen, and the text never
+                  on screen at all, while the export carried it in full. */''}
+            ${d.notes ? `<div class="vis-line" style="margin-top:.1rem">
+              ${icon('edit','ico-sm')}<span>${esc(d.notes)}</span></div>` : ''}
 
             <div class="more-actions">
               <button class="btn btn-outline mg-btn-xs" data-seva="${attr(d.id)}">

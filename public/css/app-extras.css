@@ -950,3 +950,9 @@ dialog#sheet::backdrop { background: transparent; }
   .mg-page-actions { width: 100%; margin-top: .6rem; }
   .mg-page-actions > .btn { flex: 1 1 auto; }
 }
+
+/* A donation row is the same three-band shape as the others. */
+.donation-row { align-items: flex-start; gap: 1rem; }
+.donation-row .row-main { display: flex; flex-direction: column; gap: .4rem; }
+.donation-row .lead-v { color: var(--primary-maroon); }
+.collect-meta .is-missing { color: var(--warning); }

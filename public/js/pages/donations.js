@@ -7,18 +7,21 @@
 
   /* `rows`/`totals` are kept here, not just rendered, so the export can
      take the whole fetched month rather than scraping the DOM. */
-  const state = { month: monthISO(), search: '', rows: [], totals: { total: 0, count: 0 } };
+  const state = { month: monthISO(), search: '', page: 1, rows: [], totals: { total: 0, count: 0 } };
 
   const EXPORT_COLUMNS = [
     { key: 'date',     label: 'Date', type: 'date', value: (d) => d.donation_date || '' },
     { key: 'name',     label: 'Donor',    value: (d) => d.donor_name || '' },
     { key: 'mobile',   label: 'Mobile', nowrap: true, value: (d) => d.mobile || '' },
-    { key: 'city',     label: 'City',     value: (d) => d.city || '' },
     { key: 'category', label: 'Category', value: (d) => d.category || '' },
     { key: 'amount',   label: 'Amount',   type: 'money', value: (d) => d.amount || 0 },
     { key: 'inkind',   label: 'In kind',  value: (d) => d.in_kind_item || '' },
     { key: 'receipt',  label: 'Receipt no.', value: (d) => d.receipt_no || '' },
+    { key: 'by',       label: 'Recorded by', value: (d) => d.recorded_by || '' },
     { key: 'notes',    label: 'Note',     value: (d) => d.notes || '' },
+    /* No City column: the `donations` table has none, and the list
+       endpoint does not join the devotee, so it exported an always-empty
+       column — a header promising something the file can never carry. */
   ];
 
   function exportSpec() {
@@ -77,11 +80,62 @@
         const [y, m] = state.month.split('-').map(Number);
         const d = new Date(y, m - 1 + Number(b.getAttribute('data-nav')), 1);
         state.month = d.toLocaleDateString('en-CA').slice(0, 7);
+        state.page = 1;
         load();
       }));
     host.querySelector('#donSearch').addEventListener('input',
-      debounce((e) => { state.search = e.target.value.trim(); load(); }, 280));
+      debounce((e) => { state.search = e.target.value.trim(); state.page = 1; load(); }, 280));
     await load();
+  }
+
+  /* Collapsed: who gave, what kind of offering, and how much — the
+     three things you scan a month's donations for. Receipt number,
+     in-kind item, note and who recorded it open underneath; the note in
+     particular used to exist only in the export. */
+  function rowFor(d) {
+    const summary = `
+      <div class="row-main">
+        <div class="row-title">${esc(d.donor_name)}
+          ${d.category ? `<span class="badge badge-gold">${esc(d.category)}</span>` : ''}
+          ${d.in_kind_item ? '<span class="badge">In kind</span>' : ''}</div>
+        <div class="collect-meta">
+          <span>${esc(fmtDate(d.donation_date))}</span>
+          ${d.mobile ? `<span class="is-phone">${icon('phone','ico-sm')} ${esc(d.mobile)}</span>` : ''}
+          ${d.receipt_no ? `<span>#${esc(d.receipt_no)}</span>`
+                         : '<span class="is-missing">No receipt</span>'}
+        </div>
+      </div>
+      <div class="row-end collect-lead">
+        <div class="lead-fig">
+          <span class="lead-k">${d.amount ? 'Amount' : 'In kind'}</span>
+          <span class="lead-v">${d.amount ? esc(money(d.amount)) : '—'}</span>
+        </div>
+      </div>`;
+
+    const detail = `
+      <div class="vis-detail">
+        <div class="vis-line">${icon('calendar','ico-sm')}
+          <span>${esc(UI.fmtDateLong(d.donation_date))}</span></div>
+        ${d.in_kind_item ? `<div class="vis-line">${icon('gift','ico-sm')}
+          <span>In kind: ${esc(d.in_kind_item)}</span></div>` : ''}
+        <div class="vis-line">${icon('book','ico-sm')}
+          <span>${d.receipt_no ? 'Receipt #' + esc(d.receipt_no)
+            : '<span class="muted">No receipt number recorded</span>'}</span></div>
+        ${d.notes ? `<div class="vis-line">${icon('edit','ico-sm')}
+          <span>${esc(d.notes)}</span></div>` : ''}
+        <div class="vis-line">${icon('clock','ico-sm')}
+          <span>Recorded by ${esc(d.recorded_by || '—')}
+            on ${esc(String(d.created_at || '').slice(0, 10))}</span></div>
+      </div>
+      <div class="more-actions">
+        <button class="btn btn-outline mg-btn-xs" data-edit="${attr(d.id)}">
+          ${icon('edit','ico-sm')} Edit donation</button>
+        <button class="btn btn-outline mg-btn-xs btn-danger" data-del="${attr(d.id)}">
+          ${icon('trash','ico-sm')} Delete</button>
+      </div>`;
+
+    return UI.expandableRow(summary, detail,
+      { itemClass: 'donation-row', label: 'Receipt, note and actions' });
   }
 
   async function load() {
@@ -92,35 +146,65 @@
     try {
       const { donations, totals } = await API.donations({ month: state.month, search: state.search });
       state.rows = donations; state.totals = totals;
+
+      /* An in-kind offering has no money against it, so a total alone
+         under-reports the month. Count the two kinds separately, and
+         surface entries recorded without a receipt — that is the thing
+         an accountant comes to this page to find. */
+      const t = donations.reduce((a, d) => {
+        if (d.in_kind_item) a.inKind++;
+        if (d.amount > 0) a.cash++;
+        if (!d.receipt_no) a.noReceipt++;
+        if ((d.amount || 0) > (a.largest.amount || 0)) a.largest = d;
+        return a;
+      }, { inKind: 0, cash: 0, noReceipt: 0, largest: { amount: 0 } });
+
       body.innerHTML = `
-        <div class="stats-grid" style="grid-template-columns:repeat(2,1fr)">
-          <div class="stat"><div class="stat-card-title">This month</div>
+        <div class="stats-grid">
+          <div class="stat"><div class="stat-text">
+            <div class="stat-card-title">This month</div>
             <div class="stat-card-value">${esc(money(totals.total))}</div>
-            <div class="mg-muted-xs">${esc(num(totals.count))} entries</div></div>
-        </div>
-        <div class="card"><div class="card-body" style="padding:0">
-          ${donations.length ? `<div class="list">${donations.map((d) => `
-            <div class="row-item" style="cursor:default">
-              <div class="row-main">
-                <div class="row-title">${esc(d.donor_name)}
-                  ${d.category ? `<span class="badge">${esc(d.category)}</span>` : ''}</div>
-                <div class="row-sub">${esc(fmtDate(d.donation_date))}
-                  ${d.mobile ? ' · ' + esc(d.mobile) : ''}
-                  ${d.receipt_no ? ' · #' + esc(d.receipt_no) : ''}</div>
-                ${d.in_kind_item ? `<div class="row-sub">In kind: ${esc(d.in_kind_item)}</div>` : ''}
-              </div>
-              <div class="row-end">
-                <div class="row-amount">${d.amount ? esc(money(d.amount)) : '—'}</div>
-                <div class="row-actions">
-                  <button class="icon-btn" data-edit="${attr(d.id)}" title="Edit"
-                          style="color:var(--ink-soft)">${icon('edit','ico-sm')}</button>
-                  <button class="icon-btn" data-del="${attr(d.id)}" title="Delete"
-                          style="color:var(--ink-soft)">${icon('trash','ico-sm')}</button>
-                </div>
-              </div>
-            </div>`).join('')}</div>`
-            : UI.empty('No donations', 'Nothing recorded for this month.', 'gift')}
-        </div></div>`;
+            <div class="mg-muted-xs">${esc(num(t.cash))} cash offering${t.cash === 1 ? '' : 's'}</div></div>
+            <span class="stat-ico rupee">${icon('rupee')}</span></div>
+          <div class="stat"><div class="stat-text">
+            <div class="stat-card-title">Entries</div>
+            <div class="stat-card-value">${esc(num(totals.count))}</div>
+            <div class="mg-muted-xs">${t.inKind ? esc(num(t.inKind)) + ' in kind' : 'all in cash'}</div></div>
+            <span class="stat-ico grace">${icon('gift')}</span></div>
+          <div class="stat"><div class="stat-text">
+            <div class="stat-card-title">Largest</div>
+            <div class="stat-card-value">${esc(money(t.largest.amount || 0))}</div>
+            <div class="mg-muted-xs">${t.largest.donor_name ? esc(t.largest.donor_name) : 'nothing yet'}</div></div>
+            <span class="stat-ico people">${icon('trending-up')}</span></div>
+          <div class="stat"><div class="stat-text">
+            <div class="stat-card-title">No receipt</div>
+            <div class="stat-card-value" ${t.noReceipt ? 'style="color:var(--warning)"' : ''}>${esc(num(t.noReceipt))}</div>
+            <div class="mg-muted-xs">of ${esc(num(totals.count))} entries</div></div>
+            <span class="stat-ico due">${icon('book')}</span></div>
+        </div>`;
+
+      if (!donations.length) {
+        body.insertAdjacentHTML('beforeend', UI.empty('No donations',
+          state.search ? 'Nothing matches that search this month.'
+                       : 'Nothing recorded for this month.', 'gift'));
+        return;
+      }
+
+      const pg = UI.paginate(donations, state.page);
+      state.page = pg.page;
+
+      body.insertAdjacentHTML('beforeend', `
+        <div class="card">
+          <div class="card-header"><h2>${esc(num(donations.length))} donation${donations.length === 1 ? '' : 's'}</h2>
+            <span class="small muted">${esc(MONTHS[m - 1])} ${esc(String(y))}</span></div>
+          <div class="card-body" style="padding:0"><div class="list">
+            ${pg.slice.map(rowFor).join('')}
+          </div></div>
+          ${UI.pager(pg, 'donations')}
+        </div>`);
+
+      UI.bindExpanders(body);
+      UI.bindPager(body, (delta) => { state.page = pg.page + delta; load(); });
 
       body.querySelectorAll('[data-edit]').forEach((b) =>
         b.addEventListener('click', () => {
