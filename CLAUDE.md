@@ -630,6 +630,26 @@ Status (`pending`/`partially_paid`/`paid`) is the booking's own; *Covered*, *Bap
 supported* and *Excess* are derived per booking through `UI.coverage`, which is why
 they are filters rather than statuses.
 
+**Two axes, not one.** The status chips say what state a registration is in; two selects
+beside them say which part of the Mahotsav it belongs to — category (`pooja_events
+.category`, the three hardcoded keys) and then the seva within it (`pooja_id`). They
+narrow together, because "still to collect, on the Maha Yagna" is a question the trust
+actually asks. Three things make them usable rather than another two dropdowns:
+  - **Both are built from the bookings in hand, with counts** — never from the full seva
+    list. A dropdown of seventy-five poojas, most of them with nobody on them, is a worse
+    way to find one than the search box. Everything is client-side: `GET /api/bookings`
+    already returns `category`, `pooja_id` and `pooja_name` on every row, so no round
+    trip and no API change.
+  - **Changing the category clears the seva**, which belongs to exactly one category —
+    otherwise the pair is unsatisfiable and the page just goes empty with no clue why.
+    For the same reason the empty state names whichever narrowing emptied it.
+  - **The headline totals follow the category/seva scope but not the status chips.** The
+    chips are "which of these do I work through next", so the totals stay the size of the
+    whole job; the scope is "which part of the Mahotsav am I looking at", so the totals
+    have to move with it or the filter cannot be used to check anything. The strip says
+    which scope it is for.
+`exportSpec()` stamps Category and Seva alongside Filter and Sorted by.
+
 **One handover is often split** — the sevarthi hands over part and Bapa covers the
 rest — and that is **two ledger rows**, because `payer_type` lives on the row and the
 two totals must never be merged into one. `POST /api/payments` therefore takes either

@@ -29,6 +29,74 @@
        and "by name" constantly while working down a list. */
     sortKey: 'outstanding',
     sortDir: 'desc',
+    /* A second axis, asked for by the trust: the status chips say what
+       state a registration is in, these say which part of the Mahotsav
+       it belongs to. They narrow together — "still to collect, on the
+       Maha Yagna" is the question somebody actually has. */
+    category: '',                          // '' = every category
+    poojaId: '',                           // '' = every seva in it
+  };
+
+  /* The three categories are fixed in the schema (poojas.js CATEGORIES);
+     these are the trust's words for them. */
+  const CAT_LABEL = {
+    maha_yagna: 'Maha Yagna',
+    mandir_pooja: 'Mandir ni Pooja',
+    bhagvat_katha: 'Bhagvat Saptah — Katha',
+  };
+
+  /** Category / seva scope. Kept apart from `matches` because the two
+      are different questions and both have to hold. */
+  function scoped(b) {
+    if (state.category && b.category !== state.category) return false;
+    if (state.poojaId && String(b.pooja_id) !== String(state.poojaId)) return false;
+    return true;
+  }
+
+  /** The rows the page is actually about: state filter AND scope. */
+  const visibleRows = () => state.bookings.filter((b) => matches(b, state.filter) && scoped(b));
+
+  /* Both selects are built from the bookings in hand rather than from
+     the full seva list, so they can only ever offer something that has
+     sevarthi on it — a dropdown of seventy-five poojas, most of them
+     empty, is a worse way to find one than the search box. Counts are
+     of rows matching the status filter, which is what the operator is
+     about to see. */
+  function groupCounts(rows, keyOf, nameOf) {
+    const map = new Map();
+    rows.forEach((b) => {
+      const k = String(keyOf(b));
+      if (!map.has(k)) map.set(k, { key: k, label: nameOf(b), n: 0 });
+      map.get(k).n++;
+    });
+    return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  function categoryOptions() {
+    const base = state.bookings.filter((b) => matches(b, state.filter));
+    return groupCounts(base, (b) => b.category, (b) => CAT_LABEL[b.category] || b.category);
+  }
+
+  function sevaOptions() {
+    const base = state.bookings.filter((b) => matches(b, state.filter))
+      .filter((b) => !state.category || b.category === state.category);
+    const opts = groupCounts(base, (b) => b.pooja_id, (b) => b.pooja_name);
+    /* A seva chosen before the status filter narrowed past it must stay
+       in the list, or the select silently shows something else while
+       the page is still filtered by it. */
+    if (state.poojaId && !opts.some((o) => o.key === String(state.poojaId))) {
+      const any = state.bookings.find((b) => String(b.pooja_id) === String(state.poojaId));
+      if (any) opts.unshift({ key: String(state.poojaId), label: any.pooja_name, n: 0 });
+    }
+    return opts;
+  }
+
+  const scopeLabel = () => {
+    if (state.poojaId) {
+      const b = state.bookings.find((x) => String(x.pooja_id) === String(state.poojaId));
+      return b ? b.pooja_name : '';
+    }
+    return state.category ? (CAT_LABEL[state.category] || state.category) : '';
   };
 
   /* One comparator per sortable column, each falling back to the name
@@ -138,7 +206,7 @@
        sorted, the order the operator put the list in is part of what
        they are asking for, and a sheet that comes out in a different
        order than the screen cannot be checked against it. */
-    const rows = sortRows(state.bookings.filter((b) => matches(b, state.filter)));
+    const rows = sortRows(visibleRows());
     const label = (FILTERS.find((f) => f[0] === state.filter) || [])[1] || 'All';
     const sortLabel = SORT_LABELS[state.sortKey] || state.sortKey;
     const t = rows.reduce((a, b) => {
@@ -149,8 +217,8 @@
     }, { committed: 0, devotee: 0, bappa: 0, covered: 0, outstanding: 0, excess: 0 });
 
     return {
-      filename: 'Payments-' + label,
-      title: 'Payments — ' + label,
+      filename: 'Payments-' + label + (scopeLabel() ? '-' + scopeLabel() : ''),
+      title: 'Payments — ' + label + (scopeLabel() ? ' · ' + scopeLabel() : ''),
       subtitle: 'Shri Vihat Meldi Dham (Sanand) · Murti Pran Pratishtha Mahotsav',
       columns: EXPORT_COLUMNS,
       rows,
@@ -158,6 +226,8 @@
          was a report OF, a month after it left the printer. */
       meta: [
         ['Filter', label],
+        ...(state.category ? [['Category', CAT_LABEL[state.category] || state.category]] : []),
+        ...(state.poojaId ? [['Seva', scopeLabel()]] : []),
         ['Sorted by', sortLabel + (state.sortDir === 'desc' ? ' (highest first)' : ' (A–Z / lowest first)')],
         ...(state.search ? [['Search', state.search]] : []),
         ['Sevarthi', UI.num(rows.length)],
@@ -202,6 +272,10 @@
           `<button type="button" class="btn mg-btn-xs ${state.filter === k ? 'btn-primary' : 'btn-outline'}"
                    data-filter="${attr(k)}">${esc(label)}</button>`).join('')}
       </div>
+      <div class="filter-row" id="collectScope">
+        <select class="form-select" id="collectCategory" aria-label="Mahotsav category"></select>
+        <select class="form-select" id="collectSeva" aria-label="Seva"></select>
+      </div>
       <div class="search-bar">${icon('search')}
         <input class="form-input" id="collectSearch" placeholder="Search sevarthi, mobile, samaj, seva…"
                value="${attr(state.search)}" autocomplete="off"></div>
@@ -213,6 +287,24 @@
         state.page = 1;                     // a new filter starts at its own first page
         renderCollect(host);
       }));
+
+    host.querySelector('#collectCategory').addEventListener('change', (e) => {
+      state.category = e.target.value;
+      /* A seva belongs to one category, so a category change can leave
+         the seva contradicting it. Clear it rather than filter to an
+         impossible pair and show an empty page. */
+      state.poojaId = '';
+      state.page = 1;
+      paintScope();
+      paintSummary();
+      paintCollect();
+    });
+    host.querySelector('#collectSeva').addEventListener('change', (e) => {
+      state.poojaId = e.target.value;
+      state.page = 1;
+      paintSummary();
+      paintCollect();
+    });
     host.querySelector('#collectSearch').addEventListener('input',
       debounce((e) => { state.search = e.target.value.trim(); state.page = 1; loadCollect(); }, 280));
 
@@ -230,6 +322,7 @@
     body.innerHTML = UI.loading(4);
     try {
       state.bookings = await API.bookings({ search: state.search || undefined });
+      paintScope();
       paintSummary();
       paintCollect();
     } catch (e) {
@@ -237,14 +330,38 @@
     }
   }
 
+  /** Fills both selects from the rows in hand. Called after a load and
+      whenever the category changes; the seva list depends on it. */
+  function paintScope() {
+    const cat = document.getElementById('collectCategory');
+    const seva = document.getElementById('collectSeva');
+    if (!cat || !seva) return;
+    const opt = (v, label, sel) =>
+      `<option value="${attr(v)}"${String(v) === String(sel) ? ' selected' : ''}>${esc(label)}</option>`;
+
+    const cats = categoryOptions();
+    cat.innerHTML = opt('', 'All categories', state.category) +
+      cats.map((c) => opt(c.key, `${c.label} (${UI.num(c.n)})`, state.category)).join('');
+
+    const sevas = sevaOptions();
+    seva.innerHTML = opt('', state.category ? 'All seva in this category' : 'All seva', state.poojaId) +
+      sevas.map((o) => opt(o.key, `${o.label} (${UI.num(o.n)})`, state.poojaId)).join('');
+    /* Nothing to choose between is not a choice — one seva in a
+       category, or none at all, leaves the control disabled rather
+       than pretending it does something. */
+    seva.disabled = sevas.length === 0;
+  }
+
   function paintSummary() {
     const summary = document.getElementById('collectSummary');
     if (!summary) return;
-    const live = state.bookings.filter((b) => b.status !== 'cancelled');
+    const live = state.bookings.filter((b) => b.status !== 'cancelled' && scoped(b));
 
-    /* Totals are for everything live, not just the current filter —
-       the operator wants the size of the job, then narrows to work
-       through it. Summed per booking, never netted. */
+    /* Totals are for everything live, not just the current status
+       filter — the operator wants the size of the job, then narrows to
+       work through it. They DO follow the category/seva scope, because
+       "how much is still to collect on the Maha Yagna" is the question
+       that filter was asked for. Summed per booking, never netted. */
     const t = live.reduce((a, b) => {
       const c = UI.coverage(b);
       a.committed += c.committed; a.covered += c.covered;
@@ -258,7 +375,8 @@
         <div class="stat"><div class="stat-text">
           <div class="stat-card-title">Still to collect</div>
           <div class="stat-card-value" style="color:var(--warning)">${esc(money(t.outstanding))}</div>
-          <div class="mg-muted-xs">from ${esc(num(t.owing))} sevarthi</div></div>
+          <div class="mg-muted-xs">from ${esc(num(t.owing))} sevarthi${
+            scopeLabel() ? ' · ' + esc(scopeLabel()) : ''}</div></div>
           <span class="stat-ico due">${icon('clock')}</span></div>
         <div class="stat"><div class="stat-text">
           <div class="stat-card-title">Covered</div>
@@ -282,11 +400,15 @@
     const body = document.getElementById('collectBody');
     if (!body) return;
 
-    const rows = state.bookings.filter((b) => matches(b, state.filter));
+    const rows = visibleRows();
     if (!rows.length) {
+      /* Say which of the three narrowings emptied it, or the operator
+         has to undo them one at a time to find out. */
       body.innerHTML = UI.empty(
         state.filter === 'due' ? 'Nothing outstanding' : 'Nothing here',
-        state.search ? 'No sevarthi matches that search.' : 'No sevarthi in this state.', 'rupee');
+        state.search ? `No sevarthi matches that search${scopeLabel() ? ' in ' + scopeLabel() : ''}.`
+          : scopeLabel() ? `No sevarthi in this state on ${scopeLabel()}.`
+          : 'No sevarthi in this state.', 'rupee');
       return;
     }
 
@@ -334,7 +456,8 @@
     body.innerHTML = `
       <div class="card">
         <div class="card-header"><h2>${esc(num(rows.length))} sevarthi</h2>
-          <span class="small muted">${esc((FILTERS.find((f) => f[0] === state.filter) || [])[1] || '')}</span></div>
+          <span class="small muted">${esc((FILTERS.find((f) => f[0] === state.filter) || [])[1] || '')}${
+            scopeLabel() ? ' · ' + esc(scopeLabel()) : ''}</span></div>
         <div class="card-body" style="padding:0">
           ${UI.dataTable({
             columns: COLUMNS,
