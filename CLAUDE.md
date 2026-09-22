@@ -597,6 +597,32 @@ Seva's Total Contribution), and `stripPaidNow` keeps them out of the parent payl
 `dueOf()` is a callback, not a number, because in Add Seva the due is the contribution
 field the operator is still typing into.
 
+**A form that mentions Bapa twice has to say why.** The contribution step asks about
+Bapa in two places and must: `bhuvaji_planned_amount` is what Bapa **agreed to cover**
+— a promise on the booking, no money moved — and `payments.payer_type = 'bhuvaji'` is
+what Bapa **handed over**, a ledger row. Different facts with different lifetimes: Bapa
+can promise today and pay next month, or pay having never promised. But a checkbox
+reading "Bapa is covering part of the amount" above a payer button reading "Bapa" looked
+like one question asked twice, and the trust said so. Three things keep them apart, and
+all three matter:
+  - **The words name the difference** — "Bhuvaji Suresh Bapa has agreed to cover part of
+    this" / "Bapa's agreed share" / "What was promised, not what has been handed over"
+    against "Who handed it over". Each block carries `data-block="agreement"` or
+    `"handover"`, which `app-extras.css` turns into a quiet eyebrow so the eye sees two
+    questions before it reads either.
+  - **The handover is derived from the agreement** (`bindPaidNow`): Bapa covering the
+    whole contribution defaults the payer to Bapa, covering part defaults it to Both
+    with each side prefilled, covering nothing leaves it on Devotee. `paymentForm` had
+    always done this from `bhuvaji_planned_amount − bappa_paid`; the inline "paying now"
+    block did not, so it defaulted to the devotee one line under an agreement saying
+    Bapa would pay — the same two facts entered differently depending on the screen.
+    Derivation **stops the moment the operator picks a payer**, because a plan is a plan
+    and what happened at the counter may differ. Pass `{ bapaPaid }` when editing, so a
+    share Bapa has already given is not offered a second time.
+  - **A contradiction is named, never blocked.** Bapa promising the whole amount and the
+    devotee handing it over is possible and usually a mistake, so the form says so in
+    place rather than refusing the save.
+
 **Wherever an amount is split, the form does the arithmetic** (`bindSplitBalance`). Type
 one side and the other fills with what is left of the due — "he's giving ten lakh, Bapa
 covers the balance" is the whole conversation at the counter. The moment the operator

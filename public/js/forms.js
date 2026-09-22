@@ -74,17 +74,26 @@
       never a stray figure left in a field nobody meant to fill in. */
   function bhuvajiField(amount) {
     const enabled = Number(amount || 0) > 0;
+    /* Two things on this form mention Bapa, and they are not the same
+       thing: this is what Bapa has *agreed to cover* — a promise, no
+       money moved — and the block below is cash actually handed over
+       today. Read quickly, "Bapa is covering part of the amount" and a
+       payer button marked "Bapa" look like the same statement asked
+       twice, which is exactly how it read to the trust. The wording
+       here names it as an agreement, the wording there names it as a
+       handover, and bindPaidNow now derives the second from the first
+       so they cannot quietly disagree. */
     return `
-      <div class="form-group">
+      <div class="form-group entry-block" data-block="agreement">
         <label class="small" style="display:flex;align-items:center;gap:.45rem;font-weight:500">
           <input type="checkbox" name="bhuvaji_enabled" id="f_bhuvaji_enabled" ${enabled ? 'checked' : ''} style="width:auto;min-height:0">
-          Bapa is covering part of the amount
+          Bhuvaji Suresh Bapa has agreed to cover part of this
         </label>
         <div id="bhuvajiAmountWrap" style="margin-top:.5rem${enabled ? '' : ';display:none'}">
-          <label class="form-label" for="f_bhuvaji_planned_amount">Covered by Bapa</label>
+          <label class="form-label" for="f_bhuvaji_planned_amount">Bapa's agreed share</label>
           <input class="form-input" id="f_bhuvaji_planned_amount" name="bhuvaji_planned_amount" type="number" min="0" step="1"
                  value="${attr(enabled ? amount : 0)}" inputmode="numeric">
-          <div class="form-hint">If the sevarthi cannot give the full amount, enter the share Bhuvaji Suresh Bapa will cover.</div>
+          <div class="form-hint">What was promised, not what has been handed over — record that below.</div>
           ${/* The other half of the arithmetic. Entering Bapa's share
                 without seeing what that leaves the sevarthi made the
                 operator work the subtraction out in their head. */''}
@@ -254,13 +263,18 @@
     const o = opts || {};
     return `
       <div class="divider"></div>
-      <div class="form-group">
+      <div class="form-group entry-block" data-block="handover">
         <label class="small" style="display:flex;align-items:center;gap:.45rem;font-weight:500">
           <input type="checkbox" name="paid_now" id="f_paid_now" style="width:auto;min-height:0">
           ${esc(o.label || 'Money received now')}
         </label>
         <div id="paidNowWrap" hidden style="margin-top:.6rem">
-          <div class="btn-row" style="margin-bottom:.7rem">
+          ${/* "Who handed it over" rather than a bare row of names: the
+                block above already says who agreed to pay, and without
+                a question these three buttons read as a second answer
+                to that same question instead of a different one. */''}
+          <div class="form-label">Who handed it over</div>
+          <div class="btn-row" style="margin:.35rem 0 .7rem">
             <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
               <input type="radio" name="paid_payer" value="devotee" checked style="width:auto;min-height:0;margin-right:.35rem"> Devotee</label>
             <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
@@ -268,6 +282,7 @@
             <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
               <input type="radio" name="paid_payer" value="both" style="width:auto;min-height:0;margin-right:.35rem"> Both</label>
           </div>
+          <div class="form-hint" id="paidNowAgreed" style="margin:-.45rem 0 .7rem"></div>
           <div id="paidNowSingle" class="form-group">
             <label class="form-label" for="f_paid_amount">Amount received</label>
             <input class="form-input" id="f_paid_amount" name="paid_amount" type="number" min="0" step="1" inputmode="numeric">
@@ -295,13 +310,81 @@
       hint can say whether what is being entered settles the seva — in
       Add Sevarthi that is the contribution field, which the operator is
       still typing into. */
-  function bindPaidNow(form, dueOf) {
+  function bindPaidNow(form, dueOf, opts) {
     const wrap = form.querySelector('#paidNowWrap');
     if (!wrap) return;
+    const o = opts || {};
     const single = form.querySelector('#paidNowSingle');
     const split = form.querySelector('#paidNowSplit');
     const hint = form.querySelector('#paidNowHint');
+    const agreedLine = form.querySelector('#paidNowAgreed');
     const payerOf = () => (form.querySelector('[name="paid_payer"]:checked') || {}).value || 'devotee';
+    const setPayer = (v) => {
+      const r = form.querySelector(`[name="paid_payer"][value="${v}"]`);
+      if (r) r.checked = true;
+    };
+
+    /* How much of Bapa's promise is still unpaid. The promise lives on
+       the form (the operator may be editing it this second); anything
+       Bapa has already given is passed in, because that is history and
+       is not on this form at all. */
+    const bapaOwes = () => {
+      if (!form.bhuvaji_enabled) return 0;
+      const planned = form.bhuvaji_enabled.checked
+        ? Number((form.bhuvaji_planned_amount || {}).value || 0) : 0;
+      return Math.max(0, planned - Number(o.bapaPaid || 0));
+    };
+
+    /* The bug the trust spotted: this form states an agreement ("Bapa
+       is covering ₹31,000 of ₹31,000") and then, one line below, asks
+       who is handing money over — and defaulted that to the devotee,
+       contradicting what had just been agreed. Record Payment had
+       always derived its payer from Bapa's promised share; this inline
+       block never did, so the same two facts were entered two
+       different ways depending on which screen you were on.
+
+       So it derives, exactly the way Record Payment does. And it stops
+       the moment the operator picks a payer themselves — an agreement
+       is a plan, and the whole point of the question is that what
+       actually happened at the counter may differ. */
+    let payerTouched = false;
+
+    function derivePayer() {
+      if (payerTouched) return;
+      const due = Number(dueOf() || 0);
+      const owed = Math.min(bapaOwes(), due);
+      if (owed <= 0) { setPayer('devotee'); return; }
+      if (owed >= due) { setPayer('bhuvaji'); return; }
+      setPayer('both');
+      /* Prefilled from the agreement, and flagged as autofilled so the
+         hint owns up to it — the same treatment bindSplitBalance gives
+         a side it filled in. */
+      form.paid_bapa.value = owed || '';
+      form.paid_devotee.value = Math.max(0, due - owed) || '';
+      form.paid_bapa.dataset.autofilled = '1';
+      form.paid_devotee.dataset.autofilled = '1';
+    }
+
+    /** Names the disagreement rather than silently allowing or blocking
+        it: Bapa promising the whole amount and the devotee handing it
+        over is possible, and is usually a mistake. */
+    function agreementNote() {
+      const owed = bapaOwes();
+      if (!owed) return '';
+      const payer = payerOf();
+      const fromBapa = payer === 'bhuvaji' ? Number(form.paid_amount.value || 0)
+        : payer === 'both' ? Number(form.paid_bapa.value || 0) : 0;
+      const agreed = `Bapa agreed to cover ${money(owed)} of this.`;
+      if (payer === 'devotee') {
+        return `<span style="color:var(--warning)">${esc(agreed)}
+          This records the sevarthi handing the money over, not Bapa — pick Bapa or Both if that is wrong.</span>`;
+      }
+      if (fromBapa > owed) {
+        return `<span style="color:var(--warning)">${esc(agreed)}
+          ${esc(money(fromBapa - owed))} more than that is being recorded from Bapa.</span>`;
+      }
+      return `<span class="muted">${esc(agreed)}</span>`;
+    }
 
     function paint() {
       const both = payerOf() === 'both';
@@ -311,6 +394,7 @@
         ? Number(form.paid_devotee.value || 0) + Number(form.paid_bapa.value || 0)
         : Number(form.paid_amount.value || 0);
       const due = Number(dueOf() || 0);
+      if (agreedLine) agreedLine.innerHTML = agreementNote();
       hint.innerHTML = !total
         ? '<span class="muted">Leave blank if nothing was handed over.</span>'
         : `Recording <strong>${esc(money(total))}</strong>` +
@@ -323,11 +407,26 @@
 
     form.paid_now.addEventListener('change', (e) => {
       wrap.hidden = !e.target.checked;
-      if (e.target.checked) { paint(); form.paid_amount.focus(); }
+      if (e.target.checked) {
+        derivePayer();
+        paint();
+        (payerOf() === 'both' ? form.paid_devotee : form.paid_amount).focus();
+      }
     });
-    form.querySelectorAll('[name="paid_payer"]').forEach((r) => r.addEventListener('change', paint));
+    form.querySelectorAll('[name="paid_payer"]').forEach((r) =>
+      r.addEventListener('change', () => { payerTouched = true; paint(); }));
     ['paid_amount', 'paid_devotee', 'paid_bapa'].forEach((n) =>
       form[n].addEventListener('input', paint));
+
+    /* Change the agreement and the handover follows it, until the
+       operator overrules it. Both inputs matter: the share itself, and
+       the tick that turns it on and off. */
+    if (form.bhuvaji_enabled) {
+      const reflow = () => { derivePayer(); paint(); };
+      form.bhuvaji_enabled.addEventListener('change', reflow);
+      if (form.bhuvaji_planned_amount) form.bhuvaji_planned_amount.addEventListener('input', reflow);
+    }
+
     // Type one side, the other covers the rest of the contribution.
     bindSplitBalance(form.paid_devotee, form.paid_bapa, dueOf, paint);
   }
@@ -1137,7 +1236,8 @@
            conversation, so the due is read live off the field being
            edited, net of whatever has already come in. */
         bindPaidNow(editForm, () =>
-          Math.max(0, Number(editForm.amount_committed.value || 0) - (b.amount_paid || 0)));
+          Math.max(0, Number(editForm.amount_committed.value || 0) - (b.amount_paid || 0)),
+          { bapaPaid: b.bappa_paid || 0 });
         document.getElementById('f_amount_committed').addEventListener('input', () => {
           document.getElementById('editOverpaidHint').innerHTML =
             overpaidHint(b.amount_paid, document.getElementById('f_amount_committed').value);

@@ -1088,3 +1088,28 @@ dialog#sheet::backdrop { background: transparent; }
   #sheet .modal-footer .btn { flex: 1 1 auto; }
   #sheet .modal-footer .btn-primary { min-width: 0; order: -1; width: 100%; }
 }
+
+/* ------------------------------------------------------------
+   AGREEMENT vs HANDOVER
+   The contribution step asks about Bapa twice, and it has to: what
+   Bapa *agreed to cover* is a promise on the booking, while what Bapa
+   *handed over* is a row in the ledger. They are different facts with
+   different lifetimes — Bapa can promise today and pay next month, or
+   pay without ever having promised.
+
+   Read at speed, though, a checkbox saying "Bapa is covering part of
+   the amount" and a payer button saying "Bapa" looked like the same
+   question asked twice, which is what the trust reported. The words
+   now name the difference; this gives each block a quiet eyebrow so
+   the eye sees two questions before it reads either.
+   ------------------------------------------------------------ */
+.entry-block { position: relative; }
+.entry-block::before {
+  content: attr(data-eyebrow);
+  display: block;
+  font-size: .68rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--muted-brown);
+  margin-bottom: .4rem;
+}
+.entry-block[data-block="agreement"]::before { content: 'What was agreed'; }
+.entry-block[data-block="handover"]::before { content: 'Money handed over'; }
