@@ -288,6 +288,26 @@ Easy to get wrong, and it changes what a "day" means:
   everything fits on one page, which is why it is invisible on short lists. Reset the
   page to 1 whenever the filter or search changes, and keep the fetched rows in module
   state so paging does not re-hit the API.
+- **The splash loader is inline in `index.html`, deliberately.** Ported from the trust's
+  portal (`sc207/svmds`): the mandala, the progress bar, the cycling invocations. It
+  lives in a `<style id="loaderStyle">` and a `<script>` *before* the stylesheets and
+  page scripts so it paints on the first byte, and the SVG is inline — nothing about it
+  waits on a download, which is what makes it useful rather than decorative. `<html>` and
+  `<body>` both ship `class="is-loading"` in the markup (the portal only sets `body`;
+  putting it on `html` too closes the gap before the script runs) and the script removes
+  both when it clears.
+  Closing is gated on **three** things, one more than the portal: the window `load`
+  event, the invocation cycle finishing naturally, and `window.__appReady()`. The third
+  exists because this is a single page whose first screen is fetched *after* the scripts
+  run — `load` fires while the dashboard is still skeletons, so the portal's two gates
+  would lift the splash onto a half-drawn page. `app.js` calls `__appReady()` at the end
+  of its first `render()`, on the error path as well as the success one, and nulls it so
+  later navigations never re-arm it. A `setTimeout` guard lifts the splash regardless
+  after ~8s, so a dead API or a throw in `app.js` can't trap the operator — that path is
+  covered by a test that blocks `/api/dashboard` outright.
+  `window.__boot(pct, msg)` is the progress hook; the `<script>` tags between the page
+  bundles call it. It is defined by the loader, so always call it guarded
+  (`window.__boot && window.__boot(...)`).
 - **`data-page` is reserved by the router.** `app.js` has a delegated
   `document.addEventListener('click')` that calls `e.target.closest('[data-page]')` and
   navigates, so *any* element carrying that attribute anywhere in the app becomes a nav

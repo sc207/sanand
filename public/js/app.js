@@ -37,6 +37,7 @@
     const mod = window.Pages && window.Pages[page];
     if (!mod) {
       host.innerHTML = UI.errorState('That section is not available yet.');
+      appReady();                 // an error still counts as "screen drawn"
       return;
     }
 
@@ -49,6 +50,17 @@
       host.innerHTML = UI.errorState(err.message || 'Unexpected error');
     }
     window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+
+    appReady();
+  }
+
+  /* Tell the splash the first screen is actually on the page. The window
+     `load` event fires while this render is still fetching, so without
+     this the loader would lift onto skeletons. Fired whether the render
+     succeeded or errored — a visible error beats a splash that never
+     leaves — and only ever the first time. */
+  function appReady() {
+    if (window.__appReady) { window.__appReady(); window.__appReady = null; }
   }
 
   function go(page, ...params) {

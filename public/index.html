@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="is-loading">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -8,8 +8,213 @@
 <link rel="icon" type="image/png" href="/assets/icon.png">
 <link rel="stylesheet" href="/css/styles.css">
 <link rel="stylesheet" href="/css/app-extras.css">
+<!-- Splash loader — inlined so it paints instantly, before styles.css and
+     the page scripts have downloaded. Ported unchanged from the trust's
+     portal (sc207/svmds public/index.html); see CLAUDE.md. -->
+  <style id="loaderStyle">
+    html.is-loading, body.is-loading { overflow: hidden; }
+    #appLoader {
+      position: fixed; inset: 0; z-index: 99999;
+      display: grid; place-items: center;
+      background:
+        radial-gradient(circle at 50% 30%, rgba(232,197,120,0.35), transparent 60%),
+        radial-gradient(circle at 50% 38%, #FFFDF7 0%, #F4E8CF 62%, #EAD8B4 100%);
+      transition: opacity .5s ease, visibility .5s ease;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    #appLoader.ldr-done { opacity: 0; visibility: hidden; pointer-events: none; }
+    .ldr-inner { display: flex; flex-direction: column; align-items: center; gap: 1.05rem; padding: 1.75rem; text-align: center; max-width: 90vw; }
+    .ldr-mandala { width: min(58vw, 224px); aspect-ratio: 1 / 1; position: relative; }
+    .ldr-mandala svg { width: 100%; height: 100%; display: block; overflow: visible; }
+    .ldr-ring-o { animation: ldrSpin 16s linear infinite; }
+    .ldr-ring-m { animation: ldrSpin 11s linear infinite reverse; }
+    .ldr-core   { animation: ldrPulse 2.6s ease-in-out infinite; }
+    .ldr-ring-o, .ldr-ring-m, .ldr-core { transform-box: fill-box; transform-origin: center; }
+    .ldr-glow   { animation: ldrGlow 2.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+    @keyframes ldrSpin { to { transform: rotate(360deg); } }
+    @keyframes ldrPulse { 0%,100% { transform: scale(0.955); } 50% { transform: scale(1.05); } }
+    @keyframes ldrGlow { 0%,100% { opacity: .45; transform: scale(0.9); } 50% { opacity: .8; transform: scale(1.08); } }
+    .ldr-title {
+      font-family: 'Cinzel', 'Noto Serif Gujarati', Georgia, serif;
+      font-weight: 700; color: #6B1F2A; letter-spacing: .5px; line-height: 1.25;
+      font-size: clamp(1.05rem, 4.6vw, 1.55rem);
+    }
+    .ldr-sub {
+      font-family: 'Noto Serif Gujarati', Georgia, serif; color: #C96A20; font-weight: 600;
+      font-size: clamp(.85rem, 3.7vw, 1.08rem);
+      min-height: 2.4em; max-width: 84vw; display: flex; align-items: center; justify-content: center;
+    }
+    .ldr-blessing {
+      min-height: 0; max-width: none; display: block;
+    }
+    .ldr-track {
+      width: min(78vw, 300px); height: 6px; border-radius: 999px; margin-top: .2rem;
+      background: rgba(107,31,42,.14); overflow: hidden;
+    }
+    .ldr-bar {
+      width: 8%; height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, #6B1F2A, #C96A20 55%, #E6C978);
+      box-shadow: 0 0 12px rgba(201,106,32,.55);
+      transition: width .25s ease;
+    }
+    .ldr-hint {
+      font-size: .72rem; letter-spacing: 1.5px; text-transform: uppercase; color: #9c8050;
+      min-height: 1em;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .ldr-ring-o, .ldr-ring-m, .ldr-core, .ldr-glow { animation: none; }
+      #appLoader { transition: none; }
+    }
+  </style>
 </head>
-<body>
+<body class="is-loading">
+
+<div id="appLoader" role="status" aria-live="polite" aria-label="Loading Shri Vihat Meldi Dham">
+  <div class="ldr-inner">
+    <div class="ldr-mandala" aria-hidden="true">
+      <svg viewBox="0 0 200 200">
+        <defs>
+          <radialGradient id="ldrGlowGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#F0C86A" stop-opacity="0.75"/>
+            <stop offset="70%" stop-color="#F0C86A" stop-opacity="0"/>
+          </radialGradient>
+          <path id="ldrPetal" d="M100 40 C118 60 118 86 100 104 C82 86 82 60 100 40 Z"/>
+          <path id="ldrLeaf"  d="M100 66 C110 78 110 92 100 102 C90 92 90 78 100 66 Z"/>
+        </defs>
+        <circle class="ldr-glow" cx="100" cy="100" r="96" fill="url(#ldrGlowGrad)"/>
+        <g class="ldr-ring-o" fill="rgba(201,162,74,0.08)" stroke="#C9A24A" stroke-width="1.1">
+          <circle cx="100" cy="100" r="90" fill="none"/>
+          <circle cx="100" cy="100" r="82" fill="none" stroke-dasharray="2 6"/>
+          <use href="#ldrPetal" transform="rotate(0 100 100)"/>
+          <use href="#ldrPetal" transform="rotate(45 100 100)"/>
+          <use href="#ldrPetal" transform="rotate(90 100 100)"/>
+          <use href="#ldrPetal" transform="rotate(135 100 100)"/>
+          <use href="#ldrPetal" transform="rotate(180 100 100)"/>
+          <use href="#ldrPetal" transform="rotate(225 100 100)"/>
+          <use href="#ldrPetal" transform="rotate(270 100 100)"/>
+          <use href="#ldrPetal" transform="rotate(315 100 100)"/>
+        </g>
+        <g class="ldr-ring-m" fill="rgba(201,106,32,0.10)" stroke="#C96A20" stroke-width="1.1">
+          <circle cx="100" cy="100" r="62" fill="none"/>
+          <use href="#ldrLeaf" transform="rotate(22.5 100 100)"/>
+          <use href="#ldrLeaf" transform="rotate(67.5 100 100)"/>
+          <use href="#ldrLeaf" transform="rotate(112.5 100 100)"/>
+          <use href="#ldrLeaf" transform="rotate(157.5 100 100)"/>
+          <use href="#ldrLeaf" transform="rotate(202.5 100 100)"/>
+          <use href="#ldrLeaf" transform="rotate(247.5 100 100)"/>
+          <use href="#ldrLeaf" transform="rotate(292.5 100 100)"/>
+          <use href="#ldrLeaf" transform="rotate(337.5 100 100)"/>
+        </g>
+        <g class="ldr-core" fill="none" stroke="#6B1F2A" stroke-width="1.6">
+          <circle cx="100" cy="100" r="38"/>
+          <rect x="76" y="76" width="48" height="48" transform="rotate(45 100 100)"/>
+          <rect x="76" y="76" width="48" height="48"/>
+          <circle cx="100" cy="100" r="19" fill="#C9A24A" stroke="none"/>
+          <text x="100" y="110" text-anchor="middle" stroke="none" fill="#6B1F2A"
+                font-family="'Noto Serif Gujarati', Georgia, serif" font-size="24" font-weight="700">ૐ</text>
+        </g>
+      </svg>
+    </div>
+    <div class="ldr-title">જય શ્રી વિહત મેલડી ધામ</div>
+    <div class="ldr-sub ldr-blessing" id="ldrNames">શ્રી વિહત માતાય નમઃ</div>
+    
+    <div class="ldr-track"><div class="ldr-bar" id="ldrBar"></div></div>
+    <div class="ldr-hint" id="ldrHint">Preparing the mandir</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var loader = document.getElementById('appLoader');
+  if (!loader) return;
+  var bar = document.getElementById('ldrBar');
+  var hint = document.getElementById('ldrHint');
+  var namesEl = document.getElementById('ldrNames');
+  var pct = 8, target = 12, done = false, hi = 0, ni = 0;
+  var t0 = Date.now();
+  var hints = ['Preparing the mandir', 'Lighting the diyas', 'Gathering the seva records', 'Almost ready'];
+  /* Devotional invocations, cycled one at a time in the title spot while
+     the mandir loads. The page can finish loading well before a human has
+     read all five, so closing waits on the cycle completing naturally as
+     well; it never force-jumps mid-cycle to the last name. */
+  var names = ['શ્રી વિહત માતાય નમઃ', 'શ્રી મેલડી માતાય નમઃ', 'જય શ્રી ગોગા મહારાજ',
+    'ભગવાન શ્રી કરમશી બાપાને નમન', 'ભુવાજી શ્રી સુરેશ બાપાને નમન'];
+  var NAME_HOLD = 800;                                  // ms each name is shown
+  var MIN_SHOW = names.length * NAME_HOLD + 400;        // floor, even on a fast load
+
+  /* Three gates, not the portal's two. This app is a single page whose
+     first screen is fetched after the scripts run, so `load` fires while
+     the dashboard is still showing skeletons — lifting the splash there
+     would reveal a half-drawn page. app.js calls window.__appReady()
+     once its first render has actually painted. */
+  var pageDone = false, cycleDone = false, appDone = false;
+
+  function paint() { if (bar) bar.style.width = pct.toFixed(1) + '%'; }
+  function tick() {
+    if (done) return;
+    pct += (target - pct) * 0.14;
+    if (target < 90) target += 0.4;                     // gentle creep until a real signal
+    paint();
+    requestAnimationFrame(tick);
+  }
+  window.__boot = function (t, msg) {
+    target = Math.max(target, Math.min(t, 100));
+    if (msg && hint) hint.textContent = msg;
+  };
+  window.__appReady = function () { appDone = true; maybeFinish(); };
+
+  var rot = setInterval(function () {
+    if (done || !hint) return;
+    hi = (hi + 1) % 3;
+    hint.textContent = hints[hi];
+  }, 1500);
+  var nameRot = setInterval(function () {
+    if (done || !namesEl) return;
+    ni++;
+    if (ni >= names.length) {
+      ni = names.length - 1;
+      namesEl.textContent = names[ni];
+      clearInterval(nameRot);
+      cycleDone = true;
+      maybeFinish();
+      return;
+    }
+    namesEl.textContent = names[ni];
+  }, NAME_HOLD);
+
+  document.addEventListener('DOMContentLoaded', function () { window.__boot(84, hints[2]); });
+  window.addEventListener('load', function () { pageDone = true; maybeFinish(); });
+  /* Never trap the operator: if a fetch hangs or app.js throws before it
+     can report ready, this lifts the splash anyway. */
+  var guard = setTimeout(function () {
+    pageDone = true; cycleDone = true; appDone = true; maybeFinish();
+  }, names.length * NAME_HOLD + 4000);
+
+  function maybeFinish() {
+    if (done || !pageDone || !cycleDone || !appDone) return;
+    finish();
+  }
+  function finish() {
+    if (done) return;
+    done = true;
+    clearInterval(rot); clearInterval(nameRot); clearTimeout(guard);
+    target = 100; pct = 100; paint();
+    if (hint) hint.textContent = hints[3];
+    // Slow load: waits 0ms. Fast load: holds so every name can be read.
+    setTimeout(close, Math.max(0, MIN_SHOW - (Date.now() - t0)));
+  }
+  function close() {
+    loader.classList.add('ldr-done');
+    setTimeout(function () {
+      var h = document.documentElement, b = document.body;
+      h.classList.remove('is-loading'); b.classList.remove('is-loading');
+      if (loader.parentNode) loader.parentNode.removeChild(loader);
+    }, 620);
+  }
+  document.documentElement.classList.add('is-loading');
+  requestAnimationFrame(tick);
+})();
+</script>
 
 <div id="app">
 
@@ -198,6 +403,7 @@
 <script src="/js/api.js"></script>
 <script src="/js/ui.js"></script>
 <script src="/js/print.js"></script>
+<script>window.__boot && window.__boot(34, 'Lighting the diyas');</script>
 <script src="/js/pages/dashboard.js"></script>
 <script src="/js/pages/mahotsav.js"></script>
 <script src="/js/pages/payments.js"></script>
@@ -208,7 +414,9 @@
 <script src="/js/pages/invitation.js"></script>
 <script src="/js/pages/settings.js"></script>
 <script src="/js/pages/accounts.js"></script>
+<script>window.__boot && window.__boot(62);</script>
 <script src="/js/forms.js"></script>
+<script>window.__boot && window.__boot(88, 'Almost ready');</script>
 <script src="/js/app.js"></script>
 </body>
 </html>
