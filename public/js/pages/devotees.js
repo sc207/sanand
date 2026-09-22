@@ -401,25 +401,40 @@
       title: d.id ? 'Edit Devotee' : 'Add Devotee',
       body: `
         <form id="devForm" novalidate>
-          <div class="form-group"><label class="form-label req" for="f_full_name">Full Name</label>
-            <input class="form-input" id="f_full_name" name="full_name" value="${attr(d.full_name || '')}" autocomplete="name"></div>
+          ${/* The register's identity is a name and a number; everything
+                else is detail the trust fills in when it has it. Asking
+                all eight at once made adding one person look like a
+                form to be dreaded rather than two boxes to type in. An
+                existing devotee opens with their detail showing,
+                because the reason to open an existing record is
+                usually to correct one of those fields. */''}
           <div class="form-row">
+            <div class="form-group"><label class="form-label req" for="f_full_name">Full Name</label>
+              <input class="form-input" id="f_full_name" name="full_name" value="${attr(d.full_name || '')}"
+                     autocomplete="name" enterkeyhint="next"></div>
             <div class="form-group"><label class="form-label req" for="f_mobile">Mobile No.</label>
-              <input class="form-input" id="f_mobile" name="mobile" value="${attr(d.mobile || '')}" inputmode="tel" autocomplete="tel">
+              <input class="form-input" id="f_mobile" name="mobile" value="${attr(d.mobile || '')}"
+                     inputmode="tel" autocomplete="tel" enterkeyhint="next">
               <div class="form-hint">How the trust reaches them — also what stops the same person being added twice.</div></div>
-            <div class="form-group"><label class="form-label" for="f_city">City</label>
-              <input class="form-input" id="f_city" name="city" value="${attr(d.city || '')}"></div>
           </div>
-          <div class="form-row">
-            <div class="form-group"><label class="form-label" for="f_state">State</label>
-              <input class="form-input" id="f_state" name="state" value="${attr(d.state || 'Gujarat')}"></div>
-            <div class="form-group"><label class="form-label" for="f_mul_vatan">Mul Vatan</label>
-              <input class="form-input" id="f_mul_vatan" name="mul_vatan" value="${attr(d.mul_vatan || '')}"></div>
-          </div>
-          ${samajField}
-          ${catField}
-          <div class="form-group"><label class="form-label" for="f_notes">Note</label>
-            <input class="form-input" id="f_notes" name="notes" data-translate value="${attr(d.notes || '')}"></div>
+          ${UI.moreFields('Address & samaj', `
+            <div class="form-row">
+              <div class="form-group"><label class="form-label" for="f_city">City</label>
+                <input class="form-input" id="f_city" name="city" autocomplete="address-level2" value="${attr(d.city || '')}"></div>
+              <div class="form-group"><label class="form-label" for="f_state">State</label>
+                <input class="form-input" id="f_state" name="state" autocomplete="address-level1" value="${attr(d.state || 'Gujarat')}"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label" for="f_mul_vatan">Mul Vatan</label>
+                <input class="form-input" id="f_mul_vatan" name="mul_vatan" value="${attr(d.mul_vatan || '')}"></div>
+              <div></div>
+            </div>
+            <div class="form-row">${samajField}${catField}</div>`,
+            { open: !!d.id, count: 'optional' })}
+          ${UI.moreFields('Note', `
+            <div class="form-group"><label class="form-label" for="f_notes">Anything to record</label>
+              <input class="form-input" id="f_notes" name="notes" data-translate value="${attr(d.notes || '')}"></div>`,
+            { open: !!d.notes, count: 'optional' })}
         </form>`,
       /* Most people are put on the register *because* they are taking a
          seva, so a new devotee can go straight through to it rather than
@@ -431,6 +446,7 @@
         sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
         const form = document.getElementById('devForm');
         bindLookupAdders(form); UI.bindTranslate(form);
+        UI.bindEnterFlow(form, () => document.getElementById('devSave').click());
         async function save(btn, thenSeva) {
           clearFieldErrors(form);
           const data = readForm(form);

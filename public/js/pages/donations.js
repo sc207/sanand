@@ -237,35 +237,48 @@
       title: editing ? 'Edit Donation' : 'Add Donation',
       body: `
         <form id="donForm" novalidate>
-          <div class="form-group"><label class="form-label req" for="f_donor_name">Donor Name</label>
-            <input class="form-input" id="f_donor_name" name="donor_name" autocomplete="name"
-                   value="${attr(d.donor_name || '')}" required></div>
+          ${/* A walk-in donation is three answers — who, how much, what
+                for. Mobile, city, in-kind and receipt are things the
+                trust records when it has them, and at a busy counter it
+                usually does not. They stay one line away rather than
+                standing between the donor and the entry. */''}
           <div class="form-row">
-            <div class="form-group"><label class="form-label" for="f_mobile">Mobile</label>
-              <input class="form-input" id="f_mobile" name="mobile" inputmode="tel" value="${attr(d.mobile || '')}"></div>
-            <div class="form-group"><label class="form-label" for="f_city">City</label>
-              <input class="form-input" id="f_city" name="city" value="${attr(d.city || '')}"></div>
-          </div>
-          ${catField}
-          <div class="form-row">
+            <div class="form-group"><label class="form-label req" for="f_donor_name">Donor Name</label>
+              <input class="form-input" id="f_donor_name" name="donor_name" autocomplete="name"
+                     enterkeyhint="next" value="${attr(d.donor_name || '')}" required></div>
             <div class="form-group"><label class="form-label" for="f_amount">Amount</label>
               <input class="form-input" id="f_amount" name="amount" type="number" min="0" step="1"
-                     inputmode="numeric" value="${attr(d.amount ?? '')}"></div>
+                     inputmode="numeric" enterkeyhint="next" value="${attr(d.amount ?? '')}"></div>
+          </div>
+          <div class="form-row">
+            ${catField}
             <div class="form-group"><label class="form-label" for="f_donation_date">Date</label>
               <input class="form-input" id="f_donation_date" name="donation_date" type="date"
                      value="${attr(d.donation_date || todayISO())}"></div>
           </div>
-          <div class="form-group"><label class="form-label" for="f_in_kind_item">In-kind item</label>
-            <input class="form-input" id="f_in_kind_item" name="in_kind_item"
-                   placeholder="If given as goods instead of cash" value="${attr(d.in_kind_item || '')}"></div>
-          <div class="form-group"><label class="form-label" for="f_receipt_no">Receipt No.</label>
-            <input class="form-input" id="f_receipt_no" name="receipt_no" value="${attr(d.receipt_no || '')}"></div>
+          ${UI.moreFields('Donor contact', `
+            <div class="form-row">
+              <div class="form-group"><label class="form-label" for="f_mobile">Mobile</label>
+                <input class="form-input" id="f_mobile" name="mobile" inputmode="tel" autocomplete="tel" value="${attr(d.mobile || '')}"></div>
+              <div class="form-group"><label class="form-label" for="f_city">City</label>
+                <input class="form-input" id="f_city" name="city" autocomplete="address-level2" value="${attr(d.city || '')}"></div>
+            </div>`,
+            { open: !!(d.mobile || d.city), count: 'optional' })}
+          ${UI.moreFields('In-kind, receipt & note', `
+            <div class="form-row">
+              <div class="form-group"><label class="form-label" for="f_in_kind_item">In-kind item</label>
+                <input class="form-input" id="f_in_kind_item" name="in_kind_item"
+                       placeholder="If given as goods instead of cash" value="${attr(d.in_kind_item || '')}"></div>
+              <div class="form-group"><label class="form-label" for="f_receipt_no">Receipt No.</label>
+                <input class="form-input" id="f_receipt_no" name="receipt_no" value="${attr(d.receipt_no || '')}"></div>
+            </div>
+            <div class="form-group"><label class="form-label" for="f_notes">Note</label>
+              <input class="form-input" id="f_notes" name="notes" data-translate value="${attr(d.notes || '')}"></div>`,
+            { open: !!(d.in_kind_item || d.receipt_no || d.notes), count: 'optional' })}
           ${editing ? '' : `
           <label class="small" style="display:flex;align-items:center;gap:.45rem;font-weight:500;margin-bottom:.6rem">
             <input type="checkbox" name="save_as_devotee" checked style="width:auto;min-height:0">
             Also add this donor to the devotee register</label>`}
-          <div class="form-group"><label class="form-label" for="f_notes">Note</label>
-            <input class="form-input" id="f_notes" name="notes" data-translate value="${attr(d.notes || '')}"></div>
         </form>`,
       footer: `<button class="btn btn-outline" data-sheet-close>Cancel</button>
                <button class="btn btn-primary" id="donSave">${editing ? 'Save changes' : 'Add Donation'}</button>`,
@@ -273,6 +286,7 @@
         sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);
         const form = document.getElementById('donForm');
         bindLookupAdders(form); UI.bindTranslate(form);
+        UI.bindEnterFlow(form, () => sheet.querySelector('#donSave').click());
         sheet.querySelector('#donSave').addEventListener('click', async (e) => {
           clearFieldErrors(form);
           const data = readForm(form);

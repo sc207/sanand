@@ -298,21 +298,13 @@
       title: v.id ? 'Padhramni' : 'Add Padhramni',
       body: `
         <form id="visForm" novalidate>
+          ${/* Booking a padhramni is "who, when, what for". Where they
+                live, who is escorting and the status all have sensible
+                answers already — the register's address, nobody yet,
+                and "requested" — so they wait behind one line instead
+                of standing between the phone call and the diary
+                entry. */''}
           ${devoteeField('visitor', 'Devotee Being Visited', mainDevotee)}
-          ${/* Left blank, these fall back to the devotee's register
-                entry, so the placeholder shows what will actually be
-                used — fill them in only when this padhramni is at a
-                different number or place. */''}
-          <div class="form-row">
-            <div class="form-group"><label class="form-label" for="f_mobile">Mobile</label>
-              <input class="form-input" id="f_mobile" name="mobile" value="${attr(v.mobile || '')}"
-                     inputmode="tel" placeholder="${attr(v.devotee_mobile || 'From the register')}"></div>
-            <div class="form-group"><label class="form-label" for="f_city">City</label>
-              <input class="form-input" id="f_city" name="city" value="${attr(v.city || '')}"
-                     placeholder="${attr(v.devotee_city || 'From the register')}"></div>
-          </div>
-          <div class="form-group"><label class="form-label" for="f_address">Address</label>
-            <textarea class="form-textarea" id="f_address" name="address" data-translate rows="2">${esc(v.address || '')}</textarea></div>
           <div class="form-row">
             <div class="form-group"><label class="form-label req" for="f_visit_date">Date</label>
               <input class="form-input" id="f_visit_date" name="visit_date" type="date" value="${attr(v.visit_date || todayISO())}"></div>
@@ -321,19 +313,41 @@
           </div>
           <div class="form-group"><label class="form-label" for="f_purpose">Purpose</label>
             <input class="form-input" id="f_purpose" name="purpose" data-translate value="${attr(v.purpose || '')}" placeholder="Griha shanti, new shop, …"></div>
-          <div class="form-group"><label class="form-label" for="f_status">Status</label>
-            <select class="form-select" id="f_status" name="status">
-              ${STATUSES.map((s) => `<option value="${attr(s)}"${(v.status || 'requested') === s ? ' selected' : ''}>
-                ${esc(s.charAt(0).toUpperCase() + s.slice(1))}</option>`).join('')}
-            </select></div>
-          ${devoteeMultiField('escort', 'Escort — devotees leading this visit', v.escorts || [])}
-          <div class="form-group"><label class="form-label" for="f_notes">Note</label>
-            <input class="form-input" id="f_notes" name="notes" data-translate value="${attr(v.notes || '')}"></div>
+
+          ${UI.moreFields('Where to go', `
+            ${/* Left blank, these fall back to the devotee's register
+                  entry, so the placeholder shows what will actually be
+                  used — fill them in only when this padhramni is at a
+                  different number or place. */''}
+            <div class="form-group"><label class="form-label" for="f_address">Address</label>
+              <textarea class="form-textarea" id="f_address" name="address" data-translate rows="2">${esc(v.address || '')}</textarea></div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label" for="f_mobile">Mobile</label>
+                <input class="form-input" id="f_mobile" name="mobile" value="${attr(v.mobile || '')}"
+                       inputmode="tel" autocomplete="tel" placeholder="${attr(v.devotee_mobile || 'From the register')}"></div>
+              <div class="form-group"><label class="form-label" for="f_city">City</label>
+                <input class="form-input" id="f_city" name="city" value="${attr(v.city || '')}"
+                       autocomplete="address-level2" placeholder="${attr(v.devotee_city || 'From the register')}"></div>
+            </div>`,
+            { open: !!(v.address || v.mobile || v.city), count: 'defaults to the register' })}
+
+          ${UI.moreFields('Escort, status & note', `
+            ${devoteeMultiField('escort', 'Escort — devotees leading this visit', v.escorts || [])}
+            <div class="form-group"><label class="form-label" for="f_status">Status</label>
+              <select class="form-select" id="f_status" name="status">
+                ${STATUSES.map((s) => `<option value="${attr(s)}"${(v.status || 'requested') === s ? ' selected' : ''}>
+                  ${esc(s.charAt(0).toUpperCase() + s.slice(1))}</option>`).join('')}
+              </select></div>
+            <div class="form-group"><label class="form-label" for="f_notes">Note</label>
+              <input class="form-input" id="f_notes" name="notes" data-translate value="${attr(v.notes || '')}"></div>`,
+            { open: !!(v.id || (v.escorts || []).length || v.notes), count: 'optional' })}
         </form>`,
       footer: `
         ${v.id ? '<button class="btn btn-outline btn-danger" data-del style="color:#fff;background:var(--danger);border:0">Delete</button>' : ''}
         <button class="btn btn-outline" data-sheet-close>Cancel</button>
-        <button class="btn btn-primary" id="visSave">${v.id ? 'Save' : 'Add'}</button>`,
+        ${/* "Add" alone said nothing about what was being added; the
+              button that commits a form should name the thing. */''}
+        <button class="btn btn-primary" id="visSave">${v.id ? 'Save Padhramni' : 'Add Padhramni'}</button>`,
       onMount(sheet) {
         bindDevotees(sheet);
         sheet.querySelector('[data-sheet-close]').addEventListener('click', closeSheet);

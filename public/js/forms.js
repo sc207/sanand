@@ -360,27 +360,61 @@
   }
 
   /* ============================================================
-     ADD SEVARTHI — devotee + preference (one screen) → seva → day → contribution
-     Always starts with who's asking and what they want, whether or not the
-     operator already knows the seva — the matching list underneath updates
-     live as the date/budget/category filter change, closest match first.
+     ADD SEVA — who → which seva → what they give
+     ------------------------------------------------------------
+     This flow was four steps and asked the same eight devotee fields
+     on two of them; the operator filled a whole register entry, chose
+     a seva, chose a day, and then filled the register entry again. It
+     is three steps now, each devotee field asked exactly once, and the
+     day is part of choosing the seva rather than a screen of its own —
+     most seva have a single (undated) slot, so that screen was usually
+     one button on an otherwise empty page.
+
+     What holds the three together is the rule the rest of the app's
+     sheets now follow: the header says which step you are on, the body
+     asks only that step's questions, and the footer carries the one
+     action that moves you forward. The previous version put "Continue"
+     nowhere and left "Close" as the only button, so the real next step
+     — a seva card below the fold — was invisible until you scrolled.
      ============================================================ */
+  const SEVA_STEPS = ['Sevarthi', 'Seva', 'Contribution'];
+
   async function addSevarthi(preset) {
     const state = { category: null, poojaId: null, slotId: null, pooja: null, inquiry: null, ...(preset || {}) };
     const host = () => document.getElementById('sevStep');
+    /* Opened from a pooja page the seva is already decided, so there is
+       no seva step to show and numbering it would be a lie. */
+    const fromPooja = !!(preset && preset.poojaId);
+    const stepList = fromPooja ? ['Sevarthi', 'Contribution'] : SEVA_STEPS;
+
+    const stepHead = (i) => UI.steps(stepList, fromPooja ? Math.min(i, 1) : i);
 
     openSheet({
       title: 'Add Seva',
       body: `<div id="sevStep"></div>`,
-      footer: `<button class="btn btn-outline" data-sheet-close>Close</button>`,
+      footer: '',
       async onMount() {
-        if (state.poojaId) { await stepDay(); return; }  // opened from a pooja page — skip straight in
-        await stepSevarthi();
+        if (state.poojaId) { await loadPooja(); }
+        await stepWho();
       },
     });
 
-    /* --- devotee + preference, with the matching seva list live underneath --- */
-    async function stepSevarthi() {
+    function goStep(i) {
+      if (i === 0) return stepWho();
+      if (i === 1 && !fromPooja) return stepSeva();
+      return stepAmount();
+    }
+
+    async function loadPooja() {
+      state.pooja = await API.pooja(state.poojaId);
+      const open = state.pooja.slots.filter((s) => !s.is_full);
+      /* One open slot is not a choice, it is an answer. Making the
+         operator confirm it was a whole screen that said nothing. */
+      if (open.length === 1) state.slotId = open[0].id;
+    }
+
+    /* ---------- step 1: who is taking the seva ---------- */
+    async function stepWho() {
       host().innerHTML = UI.loading(4);
       const inq = state.inquiry || {};
       const [samajField, catField, allPoojas] = await Promise.all([
@@ -388,62 +422,160 @@
         lookupSelect('devotee_category', 'category_id', inq.category_id, 'Devotee Category'),
         API.poojas(),
       ]);
-      let catFilter = state.catFilter || 'all';
       // Pin the date picker to the Mahotsav itself, not today's month, so the
       // operator isn't clicking "next" repeatedly to reach Feb 2027. Only on
       // first visit — an explicit clear (null) later is respected as-is.
       const mahotsavStart = allPoojas.map((p) => p.start_date).filter(Boolean).sort()[0] || '';
       const defaultExpectedDate = inq.expected_date !== undefined ? inq.expected_date : mahotsavStart;
+      state.allPoojas = allPoojas;
+
+      /* An optional block that already holds an answer opens itself:
+         a value folded out of sight is a value the operator cannot
+         check, and picking someone off the register fills four of
+         these. */
+      const hasDetail = !!(inq.city || inq.mul_vatan || inq.samaj_id || inq.category_id ||
+                           (inq.state && inq.state !== 'Gujarat'));
+      const hasPref = !!(inq.budget || (inq.expected_date !== undefined && inq.expected_date !== mahotsavStart));
 
       host().innerHTML = `
+        ${stepHead(0)}
         <form id="sevForm" novalidate>
           ${existingDevoteeSearch()}
-          <div class="form-group">
-            <label class="form-label req" for="f_full_name">Full Name</label>
-            <input class="form-input" id="f_full_name" name="full_name" autocomplete="name" value="${attr(inq.full_name || '')}">
-          </div>
           <div class="form-row">
+            <div class="form-group"><label class="form-label req" for="f_full_name">Full Name</label>
+              <input class="form-input" id="f_full_name" name="full_name" autocomplete="name"
+                     enterkeyhint="next" value="${attr(inq.full_name || '')}"></div>
             <div class="form-group"><label class="form-label req" for="f_mobile">Mobile No.</label>
-              <input class="form-input" id="f_mobile" name="mobile" inputmode="tel" autocomplete="tel" value="${attr(inq.mobile || '')}"></div>
-            <div class="form-group"><label class="form-label" for="f_city">City</label>
-              <input class="form-input" id="f_city" name="city" value="${attr(inq.city || '')}"></div>
+              <input class="form-input" id="f_mobile" name="mobile" inputmode="tel" autocomplete="tel"
+                     enterkeyhint="next" value="${attr(inq.mobile || '')}">
+              <div class="form-hint" id="dupHint"></div></div>
           </div>
-          <div class="form-row">
-            <div class="form-group"><label class="form-label" for="f_state">State</label>
-              <input class="form-input" id="f_state" name="state" value="${attr(inq.state || 'Gujarat')}"></div>
-            <div class="form-group"><label class="form-label" for="f_mul_vatan">Mul Vatan</label>
-              <input class="form-input" id="f_mul_vatan" name="mul_vatan" value="${attr(inq.mul_vatan || '')}"></div>
-          </div>
-          ${samajField}
-          ${catField}
-          <div class="divider"></div>
-          <div class="section-title" style="margin-top:0">What are they hoping for?</div>
-          <div class="form-row">
-            <div class="form-group"><label class="form-label" for="f_expected_date">Expected date</label>
-              <input class="form-input" id="f_expected_date" name="expected_date" type="date" value="${attr(defaultExpectedDate)}"></div>
-            <div class="form-group"><label class="form-label" for="f_budget">Their budget</label>
-              <input class="form-input" id="f_budget" name="budget" type="number" min="0" step="1" inputmode="numeric" value="${attr(inq.budget || '')}"></div>
-          </div>
-          <div class="form-hint">Date defaults to the Mahotsav itself — clear it if nothing was mentioned. Either field can be blank.</div>
-        </form>
 
-        <div class="divider"></div>
-        <div class="section-title" style="margin-top:0">Matching seva</div>
-        <div class="btn-row" id="catFilterRow" style="margin-bottom:.7rem"></div>
-        <div id="sevResults"></div>`;
+          ${UI.moreFields('Address & samaj', `
+            <div class="form-row">
+              <div class="form-group"><label class="form-label" for="f_city">City</label>
+                <input class="form-input" id="f_city" name="city" autocomplete="address-level2" value="${attr(inq.city || '')}"></div>
+              <div class="form-group"><label class="form-label" for="f_state">State</label>
+                <input class="form-input" id="f_state" name="state" autocomplete="address-level1" value="${attr(inq.state || 'Gujarat')}"></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label" for="f_mul_vatan">Mul Vatan</label>
+                <input class="form-input" id="f_mul_vatan" name="mul_vatan" value="${attr(inq.mul_vatan || '')}"></div>
+              <div></div>
+            </div>
+            <div class="form-row">${samajField}${catField}</div>`,
+            { open: hasDetail, count: 'optional' })}
+
+          ${fromPooja ? '' : UI.moreFields('What are they hoping for?', `
+            <div class="form-row">
+              <div class="form-group"><label class="form-label" for="f_expected_date">Expected date</label>
+                <input class="form-input" id="f_expected_date" name="expected_date" type="date" value="${attr(defaultExpectedDate)}"></div>
+              <div class="form-group"><label class="form-label" for="f_budget">Their budget</label>
+                <input class="form-input" id="f_budget" name="budget" type="number" min="0" step="1" inputmode="numeric" value="${attr(inq.budget || '')}"></div>
+            </div>
+            <div class="form-hint">Only used to rank the seva list on the next step. Either can be blank.</div>`,
+            { open: hasPref, count: 'helps pick a seva' })}
+        </form>`;
 
       const form = document.getElementById('sevForm');
       bindLookupAdders(form);
       bindExistingDevotee(form);
+      bindDupHint(form);
+      UI.bindEnterFlow(form, next);
+      UI.bindSteps(host(), goStep);
+
+      UI.sheetFooter(`
+        <button class="btn btn-outline" data-sheet-close>Cancel</button>
+        <button class="btn btn-primary" id="sevNext">${fromPooja ? 'Continue' : 'Choose seva'}
+          ${icon('chevron-right', 'ico-sm')}</button>`,
+        { '#sevNext': next });
+
+      function next() {
+        if (!captureWho(form)) return;
+        if (fromPooja) return stepAmount();
+        stepSeva();
+      }
+    }
+
+    /** Validates and stores step one. The two checks are here rather
+        than at the end because the server refuses a booking without a
+        mobile, and finding that out after choosing a seva means doing
+        the whole flow again. */
+    function captureWho(form) {
+      clearFieldErrors(form);
+      const data = readForm(form);
+      if (!data.full_name) {
+        showFieldError(form, 'full_name', 'Please enter the name');
+        form.full_name.focus();
+        return false;
+      }
+      const mobileMsg = UI.mobileError(data.mobile);
+      if (mobileMsg) {
+        showFieldError(form, 'mobile', mobileMsg);
+        form.mobile.focus();
+        return false;
+      }
+      state.inquiry = data;
+      return true;
+    }
+
+    /** Warn — never block — when the number is already on the register,
+        and fill in what the trust already knows about them. */
+    function bindDupHint(form) {
+      const mobileInput = form.querySelector('[name=mobile]');
+      if (!mobileInput) return;
+      mobileInput.addEventListener('blur', async () => {
+        const v = mobileInput.value.trim();
+        const hint = document.getElementById('dupHint');
+        if (!hint) return;
+        if (v.length < 6) { hint.textContent = ''; return; }
+        try {
+          const found = await API.devotees({ search: v });
+          const match = found.find((d) => (d.mobile || '') === v);
+          if (!match) { hint.textContent = ''; return; }
+          hint.textContent = `${match.full_name} already has this number — their record will be updated, not duplicated.`;
+          if (!form.full_name.value) form.full_name.value = match.full_name;
+          let filled = false;
+          const fill = (name, v2) => {
+            if (!form[name] || form[name].value || !v2) return;
+            form[name].value = v2; filled = true;
+          };
+          fill('city', match.city); fill('mul_vatan', match.mul_vatan);
+          if (form.samaj_id && !form.samaj_id.value && match.samaj_id) { form.samaj_id.value = match.samaj_id; filled = true; }
+          if (form.category_id && !form.category_id.value && match.category_id) { form.category_id.value = match.category_id; filled = true; }
+          if (filled) openMoreFieldsAround(form.city);
+        } catch (e) { /* non-blocking */ }
+      });
+    }
+
+    /* ---------- step 2: which seva ---------- */
+    async function stepSeva() {
+      const inq = state.inquiry || {};
+      let catFilter = state.catFilter || 'all';
+      const allPoojas = state.allPoojas || await API.poojas();
+
+      host().innerHTML = `
+        ${stepHead(1)}
+        ${UI.contextCard({
+          title: inq.full_name,
+          sub: [inq.mobile, inq.city].filter(Boolean).join(' · '),
+        })}
+        <div class="btn-row" id="catFilterRow" style="margin-bottom:.7rem"></div>
+        <div id="sevResults"></div>`;
+
+      UI.bindSteps(host(), goStep);
+      UI.sheetFooter(`
+        <button class="btn btn-outline" id="sevBack">${icon('chevron-left', 'ico-sm')} Back</button>
+        <button class="btn btn-outline" data-sheet-close>Cancel</button>`,
+        { '#sevBack': stepWho });
 
       const filterRow = document.getElementById('catFilterRow');
       const paintFilters = () => {
+        /* Same active-filter look as every other filter row in the app
+           (Payments, Padhramni): solid maroon for the one in force,
+           outline for the rest. A pill whose selected state was another
+           pill of nearly the same colour read as four identical chips. */
         filterRow.innerHTML = CAT_FILTERS.map(([key, label]) => `
-          ${/* Same active-filter look as every other filter row in the
-                app (Payments, Padhramni): solid maroon for the one in
-                force, outline for the rest. A pill whose selected state
-                was another pill of nearly the same colour read as four
-                identical chips. */''}
           <button type="button" class="btn mg-btn-xs ${catFilter === key ? 'btn-primary' : 'btn-outline'}"
                   data-catf="${attr(key)}">${esc(label)}</button>`
         ).join('');
@@ -459,14 +591,15 @@
 
       /* The list is ranked best-fit first, so the answer is almost
          always in the first few. Showing all thirty-five buried the
-         form's own fields under a wall of cards; five plus a count is
-         enough to choose from, and the rest are one tap away. */
-      const SEVA_PREVIEW = 5;
+         form's own fields under a wall of cards; now that this step
+         carries nothing but the list it can afford more than five, and
+         the rest are still one tap away. */
+      const SEVA_PREVIEW = 8;
       let showAllSeva = false;
 
       const paintResults = () => {
-        const budget = Number(form.budget.value || 0);
-        const expDate = form.expected_date.value || '';
+        const budget = Number(inq.budget || 0);
+        const expDate = inq.expected_date || '';
         const ranked = rankPoojas(allPoojas, { expDate, budget, catFilter });
         const shown = showAllSeva ? ranked : ranked.slice(0, SEVA_PREVIEW);
         const hidden = ranked.length - shown.length;
@@ -486,56 +619,35 @@
         if (less) less.addEventListener('click', () => { showAllSeva = false; paintResults(); });
 
         box.querySelectorAll('[data-pooja]').forEach((b) =>
-          b.addEventListener('click', () => {
-            clearFieldErrors(form);
-            const data = readForm(form);
-            if (!data.full_name) {
-              showFieldError(form, 'full_name', 'Please enter the name first');
-              form.full_name.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              form.full_name.focus();
-              return;
-            }
-            /* Caught here rather than four steps later: the booking will
-               be refused without it, and re-entering the whole form at
-               the end is the expensive way to find that out. */
-            const mobileMsg = UI.mobileError(data.mobile);
-            if (mobileMsg) {
-              showFieldError(form, 'mobile', mobileMsg);
-              form.mobile.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              form.mobile.focus();
-              return;
-            }
-            state.inquiry = data;
+          b.addEventListener('click', async () => {
             state.poojaId = b.getAttribute('data-pooja');
+            state.slotId = null;
+            await loadPooja();
+            /* A single open slot was already taken by loadPooja; only a
+               real choice of days gets a screen. */
+            if (state.slotId) return stepAmount();
             stepDay();
           }));
       };
 
       paintFilters();
       paintResults();
-      form.expected_date.addEventListener('change', paintResults);
-      form.budget.addEventListener('input', debounce(paintResults, 250));
     }
 
-    /* --- step 3: which day (availability) --- */
-    async function stepDay() {
-      host().innerHTML = UI.loading(2);
-      const pooja = await API.pooja(state.poojaId);
-      state.pooja = pooja;
+    /* ---------- step 2b: which day, only when there is a choice ---------- */
+    function stepDay() {
+      const pooja = state.pooja;
       const open = pooja.slots.filter((s) => !s.is_full);
       const whole = pooja.seating_mode === 'whole';
       host().innerHTML = `
-        <button class="btn btn-outline mg-btn-xs" data-back>${icon('chevron-left','ico-sm')} Back</button>
-        <div class="card" style="margin:.5rem 0">
-          <div class="card-body">
-            <div class="row-title">${esc(pooja.name)}</div>
-            <div class="row-sub">${esc(pooja.category_label || '')} · ${pooja.amount ? esc(money(pooja.amount)) + ' suggested per sevarthi' : 'No fixed amount'}</div>
-          </div>
-        </div>
-        <div class="form-label">${whole ? 'Confirm the patla' : pooja.start_date ? 'Pick a day' : 'Seating'}</div>
-        ${pooja.start_date ? '' : `<p class="small muted">The date for this pooja is not fixed yet.</p>`}
+        ${stepHead(1)}
+        ${UI.contextCard({
+          title: pooja.name,
+          sub: `${pooja.category_label || ''}${pooja.amount ? ' · ' + money(pooja.amount) + ' suggested' : ''}`,
+        })}
+        <div class="form-label">${whole ? 'Confirm the patla' : 'Pick a day'}</div>
         ${whole && pooja.start_date ? `<p class="small muted">This patla is held for the whole yagna.</p>` : ''}
-        ${open.length ? '' : `<p class="small" style="color:var(--danger)">This pooja is fully booked. Pick a different one.</p>`}
+        ${open.length ? '' : `<p class="small" style="color:var(--danger)">This seva is fully booked. Go back and pick a different one.</p>`}
         <div class="slot-grid">
           ${pooja.slots.map((s) => `
             <button class="slot ${s.is_full ? 'is-full' : ''}" data-slot="${attr(s.id)}" ${s.is_full ? 'disabled' : ''}>
@@ -546,24 +658,22 @@
                 : esc(s.booked_count + '/' + s.capacity) + (s.is_full ? ' full' : '')}</div>
             </button>`).join('')}
         </div>`;
-      host().querySelector('[data-back]').addEventListener('click', () => {
-        state.poojaId = null;
-        if (preset && preset.poojaId) { closeSheet(); return; }
-        stepSevarthi();
-      });
+      UI.bindSteps(host(), goStep);
+      UI.sheetFooter(`
+        <button class="btn btn-outline" id="sevBack">${icon('chevron-left', 'ico-sm')} Back</button>
+        <button class="btn btn-outline" data-sheet-close>Cancel</button>`,
+        { '#sevBack': () => { state.poojaId = null; state.pooja = null;
+                              if (fromPooja) return closeSheet(); stepSeva(); } });
       host().querySelectorAll('[data-slot]').forEach((b) =>
-        b.addEventListener('click', () => { state.slotId = b.getAttribute('data-slot'); stepDevotee(); }));
+        b.addEventListener('click', () => { state.slotId = b.getAttribute('data-slot'); stepAmount(); }));
     }
 
-    /* --- step 4: devotee + contribution --- */
-    async function stepDevotee() {
+    /* ---------- step 3: what they are giving ---------- */
+    async function stepAmount() {
+      if (!state.pooja) await loadPooja();
+      if (!state.slotId) return stepDay();
       const slot = state.pooja.slots.find((s) => String(s.id) === String(state.slotId));
       const inq = state.inquiry || {};
-      host().innerHTML = UI.loading(3);
-      const [samajField, catField] = await Promise.all([
-        lookupSelect('samaj', 'samaj_id', inq.samaj_id || null, 'Samaj'),
-        lookupSelect('devotee_category', 'category_id', inq.category_id || null, 'Devotee Category'),
-      ]);
 
       // The seat's price wins for the committed total — that is what actually
       // funds it. A budget below that price pre-fills Bapa's share with the
@@ -579,38 +689,21 @@
           : `They mentioned ${money(budget)}, at or above the ${money(suggested)} for this seva.`;
 
       host().innerHTML = `
-        <button class="btn btn-outline mg-btn-xs" data-back>${icon('chevron-left','ico-sm')} Back</button>
-        <div class="card" style="margin:.5rem 0"><div class="card-body" style="padding:.6rem .8rem">
-          <div class="row-title">${esc(state.pooja.name)}</div>
-          <div class="row-sub">${state.pooja.seating_mode === 'whole'
-              ? esc(UI.fmtRange(state.pooja.start_date, state.pooja.end_date))
-              : esc(fmtDate(slot.slot_date))}
-            · ${slot.capacity === null ? 'open seating' : esc(slot.booked_count + '/' + slot.capacity + ' booked')}</div>
-        </div></div>
+        ${stepHead(2)}
+        ${UI.contextCard({
+          title: inq.full_name,
+          sub: [inq.mobile, inq.city].filter(Boolean).join(' · '),
+          rows: [
+            ['Seva', state.pooja.name],
+            [state.pooja.seating_mode === 'whole' ? 'Dates' : 'Day',
+             state.pooja.seating_mode === 'whole'
+               ? UI.fmtRange(state.pooja.start_date, state.pooja.end_date)
+               : (slot.slot_date ? fmtDate(slot.slot_date) : UI.TBD)],
+            ['Seating', slot.capacity === null ? 'Open' : `${slot.booked_count}/${slot.capacity} booked`],
+          ],
+        })}
 
         <form id="sevForm" novalidate>
-          <div class="form-group">
-            <label class="form-label req" for="f_full_name">Full Name</label>
-            <input class="form-input" id="f_full_name" name="full_name" autocomplete="name" value="${attr(inq.full_name || '')}" required>
-            <div class="form-hint" id="dupHint"></div>
-          </div>
-          <div class="form-row">
-            <div class="form-group"><label class="form-label req" for="f_mobile">Mobile No.</label>
-              <input class="form-input" id="f_mobile" name="mobile" inputmode="tel" autocomplete="tel" value="${attr(inq.mobile || '')}"></div>
-            <div class="form-group"><label class="form-label" for="f_city">City</label>
-              <input class="form-input" id="f_city" name="city" value="${attr(inq.city || '')}"></div>
-          </div>
-          <div class="form-row">
-            <div class="form-group"><label class="form-label" for="f_state">State</label>
-              <input class="form-input" id="f_state" name="state" value="${attr(inq.state || 'Gujarat')}"></div>
-            <div class="form-group"><label class="form-label" for="f_mul_vatan">Mul Vatan</label>
-              <input class="form-input" id="f_mul_vatan" name="mul_vatan" value="${attr(inq.mul_vatan || '')}"></div>
-          </div>
-          ${samajField}
-          ${catField}
-
-          <div class="divider"></div>
-          <div class="section-title" style="margin-top:0">Contribution</div>
           <div class="form-group">
             <label class="form-label req" for="f_amount_committed">Total Contribution</label>
             <input class="form-input" id="f_amount_committed" name="amount_committed" type="number" min="0" step="1"
@@ -618,52 +711,38 @@
             <div class="form-hint">${esc(amountHint)}</div>
           </div>
           ${bhuvajiField(bapaDefault)}
-          <div class="form-group"><label class="form-label" for="f_notes">Note</label><input class="form-input" id="f_notes" name="notes" data-translate></div>
           ${paidNowField({ label: 'They are paying now' })}
+          ${UI.moreFields('Note', `
+            <div class="form-group"><label class="form-label" for="f_notes">Anything to record</label>
+              <input class="form-input" id="f_notes" name="notes" data-translate></div>`,
+            { count: 'optional' })}
         </form>`;
 
       const form = document.getElementById('sevForm');
-      bindLookupAdders(form); UI.bindTranslate(form); bindBhuvajiToggle(form);
+      UI.bindTranslate(form); bindBhuvajiToggle(form);
       // Nothing is paid yet, so the whole contribution is what is due.
       bindPaidNow(form, () => Number(form.amount_committed.value || 0));
+      UI.bindSteps(host(), goStep);
 
-      // Warn (do not block) when the mobile number already exists.
-      const mobileInput = form.querySelector('[name=mobile]');
-      mobileInput.addEventListener('blur', async () => {
-        const v = mobileInput.value.trim();
-        const hint = document.getElementById('dupHint');
-        if (v.length < 6) { hint.textContent = ''; return; }
-        try {
-          const found = await API.devotees({ search: v });
-          const match = found.find((d) => (d.mobile || '') === v);
-          if (match) {
-            hint.textContent = `Existing devotee "${match.full_name}" has this number — their record will be updated, not duplicated.`;
-            if (!form.full_name.value) form.full_name.value = match.full_name;
-            if (!form.city.value && match.city) form.city.value = match.city;
-            if (!form.mul_vatan.value && match.mul_vatan) form.mul_vatan.value = match.mul_vatan;
-            if (match.samaj_id) form.samaj_id.value = match.samaj_id;
-            if (match.category_id) form.category_id.value = match.category_id;
-          } else hint.textContent = '';
-        } catch (e) { /* non-blocking */ }
-      });
-
-      host().querySelector('[data-back]').addEventListener('click', () => { state.slotId = null; stepDay(); });
-
-      document.getElementById('sheetFoot').innerHTML = `
+      UI.sheetFooter(`
+        <button class="btn btn-outline" id="sevBack">${icon('chevron-left', 'ico-sm')} Back</button>
         <button class="btn btn-outline" data-sheet-close>Cancel</button>
-        <button class="btn btn-primary" id="sevSave">Save Sevarthi</button>`;
-      document.getElementById('sheetFoot').querySelector('[data-sheet-close]')
-        .addEventListener('click', closeSheet);
-      document.getElementById('sevSave').addEventListener('click', save);
+        <button class="btn btn-primary" id="sevSave">Save Sevarthi</button>`,
+        { '#sevBack': () => {
+            state.slotId = null;
+            if (state.pooja.slots.filter((s) => !s.is_full).length > 1) return stepDay();
+            state.poojaId = null; state.pooja = null;
+            if (fromPooja) return closeSheet();
+            stepSeva();
+          },
+          '#sevSave': save });
 
       async function save(e) {
         const btn = e.currentTarget;
         clearFieldErrors(form);
         const data = readForm(form);
+        const who = state.inquiry || {};
 
-        if (!data.full_name) return showFieldError(form, 'full_name', 'Please enter the name');
-        const mobileMsg = UI.mobileError(data.mobile);
-        if (mobileMsg) return showFieldError(form, 'mobile', mobileMsg);
         const total = Number(data.amount_committed || 0);
         const bapa = readBhuvajiAmount(data);
         if (bapa > total) return showFieldError(form, 'bhuvaji_planned_amount', "Bapa's share cannot exceed the total");
@@ -679,13 +758,13 @@
         try {
           const res = await API.post('/bookings', {
             slot_id: state.slotId,
-            full_name: data.full_name,
-            mobile: data.mobile,
-            city: data.city,
-            state: data.state,
-            mul_vatan: data.mul_vatan,
-            samaj_id: data.samaj_id,
-            category_id: data.category_id,
+            full_name: who.full_name,
+            mobile: who.mobile,
+            city: who.city,
+            state: who.state,
+            mul_vatan: who.mul_vatan,
+            samaj_id: who.samaj_id,
+            category_id: who.category_id,
             amount_committed: total,
             bhuvaji_planned_amount: bapa,
             notes: data.notes,
@@ -703,6 +782,15 @@
         }
       }
     }
+  }
+
+  /** Opens the folded block a field lives in, so a value written into
+      it by the app is never hidden from the operator who has to check
+      it. */
+  function openMoreFieldsAround(field) {
+    if (!field) return;
+    const box = field.closest('.more-fields');
+    if (box) box.open = true;
   }
 
   /* ============================================================
@@ -765,10 +853,8 @@
     openSheet({
       title: 'Correct payment entry',
       body: `
-        <div class="card" style="margin-bottom:.8rem"><div class="card-body" style="padding:.7rem .85rem">
-          <div class="row-title">${esc(p.full_name)}</div>
-          <div class="row-sub">${esc(p.pooja_name)} · recorded by ${esc(p.recorded_by || '—')}</div>
-        </div></div>
+        ${UI.contextCard({ title: p.full_name,
+          sub: `${p.pooja_name} · recorded by ${p.recorded_by || '—'}` })}
         <form id="payEditForm" novalidate>
           <div class="form-group">
             <label class="form-label req" for="f_amount">Amount</label>
@@ -841,19 +927,21 @@
     openSheet({
       title: asBapa ? 'Add Bapa Support' : 'Record Payment',
       body: `
-        <div class="card" style="margin-bottom:.8rem"><div class="card-body" style="padding:.7rem .85rem">
-          <div class="row-title">${esc(b.full_name)} ${UI.coverageBadges(b)}</div>
-          <div class="row-sub">${esc(b.pooja_name)} · ${esc(fmtDate(b.slot_date))}</div>
-          <div class="divider" style="margin:.55rem 0"></div>
-          <div style="display:flex;justify-content:space-between;font-size:.82rem">
-            <span class="muted">Committed</span><strong>${esc(money(b.amount_committed))}</strong></div>
-          <div style="display:flex;justify-content:space-between;font-size:.82rem">
-            <span class="muted">Received so far</span><strong>${esc(money(b.amount_paid))}</strong></div>
-          <div style="display:flex;justify-content:space-between;font-size:.82rem;color:var(--danger)">
-            <span>Still due</span><strong>${esc(money(due))}</strong></div>
-          ${b.bhuvaji_planned_amount > 0 ? `<div class="small muted" style="margin-top:.35rem">
-            Bapa agreed to cover ${esc(money(b.bhuvaji_planned_amount))}</div>` : ''}
-        </div></div>
+        ${/* This card is why Record Payment was the one sheet nobody
+              got lost in: it says who, what for, and where the money
+              stands before asking for a rupee. It is UI.contextCard
+              now, and every entry sheet in the app opens with one. */''}
+        ${UI.contextCard({
+          title: b.full_name,
+          badge: UI.coverageBadges(b),
+          sub: `${b.pooja_name} · ${fmtDate(b.slot_date)}`,
+          rows: [
+            ['Committed', money(b.amount_committed)],
+            ['Received so far', money(b.amount_paid)],
+            ['Still due', money(due), 'is-due'],
+          ].concat(b.bhuvaji_planned_amount > 0
+            ? [['Bapa agreed to cover', money(b.bhuvaji_planned_amount)]] : []),
+        })}
 
         <form id="payForm" novalidate>
           ${/* Who paid comes first now, because it decides whether the
@@ -1009,15 +1097,11 @@
     openSheet({
       title: 'Edit Sevarthi',
       body: `
-        <div class="card" style="margin-bottom:.8rem"><div class="card-body" style="padding:.7rem .85rem">
-          <div class="row-title">${esc(b.full_name)} ${UI.coverageBadges(b)}</div>
-          <div class="row-sub">${esc(b.pooja_name)} · ${esc(fmtDate(b.slot_date))}</div>
-          <div class="divider" style="margin:.55rem 0"></div>
-          <div style="display:flex;justify-content:space-between;font-size:.82rem">
-            <span class="muted">Received so far</span><strong>${esc(money(b.amount_paid))}</strong></div>
-          <button type="button" class="btn btn-outline mg-btn-xs" data-view-history style="margin-top:.55rem">
-            ${icon('history','ico-sm')} Change history</button>
-        </div></div>
+        ${UI.contextCard({ title: b.full_name, badge: UI.coverageBadges(b),
+          sub: `${b.pooja_name} · ${fmtDate(b.slot_date)}`,
+          rows: [['Received so far', money(b.amount_paid)]] })}
+        <button type="button" class="btn btn-outline mg-btn-xs" data-view-history style="margin:-.5rem 0 1rem">
+          ${icon('history','ico-sm')} Change history</button>
 
         <form id="editForm" novalidate>
           <div class="form-group">
@@ -1135,11 +1219,10 @@
       const defaultExpDate = state.expDate !== undefined ? state.expDate : mahotsavStart;
 
       host().innerHTML = `
-        <div class="card" style="margin:0 0 .8rem"><div class="card-body" style="padding:.6rem .8rem">
-          <div class="row-title">Currently on</div>
-          <div class="row-sub">${esc(b.pooja_name)} · ${!b.slot_date ? 'Date TBA' : esc(fmtDate(b.slot_date))}
-            · ${esc(money(b.amount_committed))} committed${b.amount_paid > 0 ? ' · ' + esc(money(b.amount_paid)) + ' received' : ''}</div>
-        </div></div>
+        ${UI.contextCard({ title: b.full_name,
+          sub: 'Currently on ' + b.pooja_name + ' · ' + (!b.slot_date ? 'Date TBA' : fmtDate(b.slot_date)),
+          rows: [['Committed', money(b.amount_committed)]]
+            .concat(b.amount_paid > 0 ? [['Received so far', money(b.amount_paid)]] : []) })}
         <form id="rsnForm" novalidate>
           <div class="form-row">
             <div class="form-group"><label class="form-label" for="f_new_date">New expected date</label>
@@ -1201,10 +1284,8 @@
       const whole = pooja.seating_mode === 'whole';
       host().innerHTML = `
         <button class="btn btn-outline mg-btn-xs" data-back>${icon('chevron-left','ico-sm')} Back</button>
-        <div class="card" style="margin:.5rem 0"><div class="card-body">
-          <div class="row-title">${esc(pooja.name)}</div>
-          <div class="row-sub">${esc(pooja.category_label || '')}${pooja.amount ? ' · ' + esc(money(pooja.amount)) + ' suggested' : ''}</div>
-        </div></div>
+        ${UI.contextCard({ title: pooja.name,
+          sub: `${pooja.category_label || ''}${pooja.amount ? ' · ' + money(pooja.amount) + ' suggested' : ''}` })}
         <div class="form-label">${whole ? 'Confirm the patla' : pooja.start_date ? 'Pick a day' : 'Seating'}</div>
         <div class="slot-grid">
           ${pooja.slots.map((s) => {
@@ -1253,13 +1334,11 @@
 
       host().innerHTML = `
         <button class="btn btn-outline mg-btn-xs" data-back>${icon('chevron-left','ico-sm')} Back</button>
-        <div class="card" style="margin:.5rem 0"><div class="card-body">
-          <div class="row-sub">From</div>
-          <div class="row-title">${esc(b.pooja_name)} · ${!b.slot_date ? 'Date TBA' : esc(fmtDate(b.slot_date))}</div>
-          <div class="divider" style="margin:.5rem 0"></div>
-          <div class="row-sub">To</div>
-          <div class="row-title">${esc(state.pooja.name)} · ${!slot.slot_date ? 'Date TBA' : esc(fmtDate(slot.slot_date))}</div>
-        </div></div>
+        ${UI.contextCard({ title: b.full_name,
+          rows: [
+            ['From', b.pooja_name + ' · ' + (!b.slot_date ? 'Date TBA' : fmtDate(b.slot_date))],
+            ['To', state.pooja.name + ' · ' + (!slot.slot_date ? 'Date TBA' : fmtDate(slot.slot_date))],
+          ] })}
         ${sameSlot ? `<p class="small muted">That's the day they're already on — nothing to move.</p>` : `
         <form id="rsnConfirmForm" novalidate>
           <div class="form-group">
@@ -1349,23 +1428,15 @@
             document.getElementById('sheetTitle').textContent = 'Ledger — ' + b.full_name;
             const c = UI.coverage(b);
 
-            const line = (label, value, cls) =>
-              `<div style="display:flex;justify-content:space-between;font-size:.82rem${cls ? ';color:' + cls : ''}">
-                 <span class="muted">${esc(label)}</span><strong>${esc(money(value))}</strong></div>`;
-
             const ACTION_BADGE = { create: 'badge-confirmed', update: 'badge-maroon', cancel: 'badge-cancelled', payment: 'badge-gold', delete: 'badge-danger' };
 
             box.innerHTML = `
-              <div class="card" style="margin-bottom:.9rem"><div class="card-body" style="padding:.75rem .9rem">
-                <div class="row-title">${esc(b.full_name)} ${UI.coverageBadges(b)}</div>
-                <div class="row-sub">${esc(b.pooja_name)} · ${esc(fmtDate(b.slot_date))}</div>
-                <div class="divider" style="margin:.55rem 0"></div>
-                ${line('Contribution', c.committed)}
-                ${line('Devotee paid', c.devotee_paid)}
-                ${c.bappa_paid ? line("Bapa's support", c.bappa_paid, 'var(--warning)') : ''}
-                ${c.outstanding > 0 ? line('Outstanding', c.outstanding, 'var(--danger)')
-                  : c.excess > 0 ? line('Excess', c.excess, 'var(--saffron)') : ''}
-              </div></div>
+              ${UI.contextCard({ title: b.full_name, badge: UI.coverageBadges(b),
+                sub: `${b.pooja_name} · ${fmtDate(b.slot_date)}`,
+                rows: [['Contribution', money(c.committed)], ['Devotee paid', money(c.devotee_paid)]]
+                  .concat(c.bappa_paid ? [["Bapa's support", money(c.bappa_paid)]] : [])
+                  .concat(c.outstanding > 0 ? [['Outstanding', money(c.outstanding), 'is-due']]
+                        : c.excess > 0 ? [['Excess', money(c.excess)]] : []) })}
 
               <div class="section-title" style="margin:0 0 .5rem">Payments</div>
               ${b.payments && b.payments.length ? `<div class="card"><div class="card-body" style="padding:0"><div class="list">

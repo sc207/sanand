@@ -674,6 +674,101 @@
     });
   }
 
+  /* ============================================================
+     DATA-ENTRY KIT
+     ------------------------------------------------------------
+     Three pieces every entry sheet in the app now shares, so that a
+     form the operator has learned once behaves the same everywhere.
+     ============================================================ */
+
+  /** A numbered stepper for a multi-step sheet.
+      `labels` is the full list, `current` the 0-based step in force.
+      A finished step is a real <button>: going back to correct a name
+      must never mean starting the flow again, and the only honest
+      affordance for that is something focusable and clickable. */
+  function steps(labels, current) {
+    const html = labels.map((label, i) => {
+      const state = i === current ? 'is-now' : i < current ? 'is-done' : '';
+      const tag = i < current ? 'button' : 'span';
+      return `${i ? `<span class="step-sep" aria-hidden="true">${icon('chevron-right', 'ico-sm')}</span>` : ''}
+        <${tag} class="step ${state}"${i < current ? ` type="button" data-step-go="${attr(i)}"` : ''}${
+          i === current ? ' aria-current="step"' : ''}>
+          <span class="step-n" aria-hidden="true">${esc(String(i + 1))}</span>
+          <span class="step-t">${esc(label)}</span>
+        </${tag}>`;
+    }).join('');
+    return `<nav class="steps" aria-label="Progress">${html}</nav>`;
+  }
+
+  /** Wires the clickable finished steps rendered by `steps()`. */
+  function bindSteps(root, onGo) {
+    if (!root || typeof onGo !== 'function') return;
+    root.querySelectorAll('[data-step-go]').forEach((b) =>
+      b.addEventListener('click', () => onGo(Number(b.getAttribute('data-step-go')))));
+  }
+
+  /** Optional fields, folded away behind one line.
+      The fields stay in the DOM whether or not the block is open, so
+      `readForm` still collects them and a prefilled value is never
+      silently dropped — which is also why a block that already holds
+      an answer opens itself. */
+  function moreFields(label, inner, opts) {
+    const o = opts || {};
+    return `<details class="more-fields"${o.open ? ' open' : ''}>
+      <summary>${icon('chevron-right', 'ico-sm')}<span>${esc(label)}</span>${
+        o.count ? `<span class="more-count">${esc(o.count)}</span>` : ''}</summary>
+      <div class="more-fields-body">${inner}</div>
+    </details>`;
+  }
+
+  /** "This is who and what you are entering against."
+      `rows` is [[label, value, cls?], …] — the money summary that made
+      Record Payment the one sheet nobody got lost in. */
+  function contextCard({ title, badge, sub, rows }) {
+    return `<div class="entry-context">
+      <div class="ec-title">${esc(title || '')}${badge || ''}</div>
+      ${sub ? `<div class="ec-sub">${esc(sub)}</div>` : ''}
+      ${(rows && rows.length) ? `<dl class="ec-rows">${rows.map(([k, v, cls]) =>
+        `<div class="ec-row ${cls || ''}"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>` : ''}
+    </div>`;
+  }
+
+  /** Replaces the sheet's footer between steps of one flow.
+      Each step owns its own actions, and the primary one has to be in
+      the footer where it is always visible — a "next" that lives in
+      the scrolling body reads as no next at all. */
+  function sheetFooter(html, binds) {
+    const foot = document.getElementById('sheetFoot');
+    if (!foot) return null;
+    foot.innerHTML = html || '';
+    foot.querySelectorAll('[data-sheet-close]').forEach((b) =>
+      b.addEventListener('click', closeSheet));
+    if (binds) Object.keys(binds).forEach((sel) => {
+      const el = foot.querySelector(sel);
+      if (el) el.addEventListener('click', binds[sel]);
+    });
+    if (global.Lang) Lang.translateTree(foot);
+    return foot;
+  }
+
+  /** Enter moves to the next field rather than submitting a half-filled
+      form — the counter is a conversation, and the operator types in
+      the order the answers arrive. The last field submits. */
+  function bindEnterFlow(form, onLast) {
+    if (!form) return;
+    form.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      const el = e.target;
+      if (!el.matches || !el.matches('input:not([type=checkbox]):not([type=radio])')) return;
+      e.preventDefault();
+      const fields = [...form.querySelectorAll('input, select, textarea')]
+        .filter((f) => !f.disabled && f.type !== 'hidden' && f.offsetParent !== null);
+      const next = fields[fields.indexOf(el) + 1];
+      if (next) next.focus();
+      else if (typeof onLast === 'function') onLast();
+    });
+  }
+
   global.UI = {
     esc, attr, money, num, fmtDate, fmtDateLong, fmtRange, TBD,
     todayISO, monthISO, MONTHS, bindTranslate,
@@ -681,6 +776,7 @@
     mobileError, coverage, coverageBadges, ago, whenDay,
     PAGE_SIZE, paginate, pager, bindPager,
     expandableRow, bindExpanders,
+    steps, bindSteps, moreFields, contextCard, sheetFooter, bindEnterFlow,
     toast, openSheet, closeSheet, confirmSheet,
     debounce, readForm, showFieldError, clearFieldErrors,
     devoteeField, devoteeMultiField, bindDevotees, multiIds,

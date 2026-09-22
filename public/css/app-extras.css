@@ -967,3 +967,124 @@ dialog#sheet::backdrop { background: transparent; }
   .gs-booking .row-end { width: 100%; align-items: stretch; text-align: left; }
   .gs-booking .btn-row { justify-content: flex-start !important; }
 }
+
+/* ============================================================
+   DATA ENTRY — the sheet is where the trust's work actually happens
+   ------------------------------------------------------------
+   The complaint that started this block was "it feels congested and
+   hard to add entries", and the screenshots agreed. Four things were
+   wrong, each borrowed back from what admin/ERP systems settled on
+   long ago (SAP Fiori's wizard floorplan, Salesforce's record modal,
+   Odoo and Zoho's quick-create, Polaris's contextual save bar):
+
+     1. the sheet was a 580px phone column on a 1440px monitor, so
+        every form stacked one field per line and ran off the screen;
+     2. the only footer button was "Close" — the action that actually
+        moved the flow on was a card below the fold, so the form read
+        as a dead end;
+     3. every optional field was as loud as the two required ones;
+     4. inputs were 0.9rem/40px, which iOS zooms into on focus and a
+        thumb misses.
+   ============================================================ */
+
+/* 1. A data-entry sheet is a workspace, not a phone column.
+      styles.css caps .modal-box at 580px for the portal's dialogs; an
+      entry form pairs its fields and needs the room. The cap still
+      exists — a form free to span a 27" monitor is its own problem. */
+#sheet .modal-box { max-width: 880px; }
+
+/* 2. Inputs the thumb can hit and iOS will not zoom into.
+      Anything under 16px makes mobile Safari zoom the page on focus,
+      which then has to be pinched back out for every single field. */
+#sheet .form-input,
+#sheet .form-select,
+#sheet .form-textarea {
+  font-size: 1rem;
+  padding: 0.7rem 0.9rem;
+  min-height: 48px;
+}
+#sheet .form-textarea { min-height: 5rem; }
+@media (pointer: coarse) {
+  #sheet .form-input,
+  #sheet .form-select,
+  #sheet .form-textarea { min-height: 52px; }
+}
+/* The label is part of the field's tap target, not decoration next to
+   it: padding here without margin would push every group apart. */
+#sheet .form-label { font-size: .85rem; padding: .15rem 0; }
+
+/* 3. The stepper. A multi-step sheet has to say where you are and how
+      much is left, or step one reads like the whole form. Completed
+      steps are clickable — going back to fix a name must not mean
+      starting again. */
+.steps { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; margin-bottom: 1.1rem; }
+.step {
+  display: inline-flex; align-items: center; gap: .45rem;
+  padding: .3rem .7rem .3rem .35rem;
+  border: 1px solid transparent; border-radius: 999px;
+  background: none; font: inherit; font-size: .8rem; font-weight: 600;
+  color: var(--muted-brown); white-space: nowrap;
+}
+.step-n {
+  display: inline-grid; place-items: center;
+  width: 1.5rem; height: 1.5rem; border-radius: 50%;
+  background: var(--warm-border); color: var(--dark-brown);
+  font-size: .75rem; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.step.is-done { color: var(--dark-brown); cursor: pointer; }
+.step.is-done:hover, .step.is-done:focus-visible { border-color: var(--warm-border); background: var(--warm-ivory); }
+.step.is-done .step-n { background: var(--antique-gold); color: #FFFFFF; }
+.step.is-now { color: var(--primary-maroon); border-color: var(--antique-gold); background: var(--warm-ivory); }
+.step.is-now .step-n { background: var(--primary-maroon); color: #FFFFFF; }
+.step-sep { color: var(--warm-border); flex: 0 0 auto; }
+/* On a phone the labels alone fill the row; the numbers still tell you
+   where you are, so only the current step keeps its words. */
+@media (max-width: 560px) {
+  .steps { gap: .25rem; }
+  .step:not(.is-now) .step-t { display: none; }
+  .step:not(.is-now) { padding: .3rem .35rem; }
+}
+
+/* 4. Optional fields, folded away. Odoo and Zoho both open on a
+      quick-create of two or three fields with the full record one
+      click behind it; asking eight questions to seat one sevarthi is
+      what made this feel like paperwork. <details> needs no JS and
+      keeps the fields in the DOM, so readForm still sees them. */
+.more-fields { margin-bottom: 1rem; border-top: 1px solid var(--warm-border); }
+.more-fields > summary {
+  list-style: none; cursor: pointer;
+  display: flex; align-items: center; gap: .45rem;
+  padding: .7rem .1rem; font-size: .85rem; font-weight: 700;
+  color: var(--primary-maroon);
+}
+.more-fields > summary::-webkit-details-marker { display: none; }
+.more-fields > summary .ico { transition: transform var(--transition-fast); }
+.more-fields[open] > summary .ico { transform: rotate(90deg); }
+.more-fields > summary:focus-visible { outline: 2px solid var(--antique-gold); outline-offset: 2px; }
+.more-fields-body { padding-top: .35rem; }
+.more-fields > summary .more-count { font-weight: 600; color: var(--muted-brown); }
+
+/* 5. The context card — "this is who and what you are entering against".
+      Record Payment already had one and was the one sheet that never
+      confused anyone; this is that pattern named and reused. */
+.entry-context {
+  border: 1px solid var(--warm-border); border-radius: var(--radius-sm);
+  background: var(--warm-ivory); padding: .8rem 1rem; margin-bottom: 1.1rem;
+}
+.entry-context .ec-title { font-weight: 700; color: var(--dark-brown); display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.entry-context .ec-sub { font-size: .82rem; color: var(--muted-brown); margin-top: .15rem; }
+.entry-context .ec-rows { margin-top: .6rem; border-top: 1px solid var(--warm-border); padding-top: .55rem; display: grid; gap: .25rem; }
+.entry-context .ec-row { display: flex; justify-content: space-between; gap: 1rem; font-size: .85rem; }
+.entry-context .ec-row dt { color: var(--muted-brown); }
+.entry-context .ec-row dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.entry-context .ec-row.is-due dt, .entry-context .ec-row.is-due dd { color: var(--danger); }
+
+/* 6. The footer carries the one action that moves the flow on, and it
+      is the widest thing in the row so it cannot be mistaken for the
+      cancel beside it. */
+#sheet .modal-footer .btn-primary { min-width: 11rem; }
+@media (max-width: 480px) {
+  #sheet .modal-footer { flex-wrap: wrap; }
+  #sheet .modal-footer .btn { flex: 1 1 auto; }
+  #sheet .modal-footer .btn-primary { min-width: 0; order: -1; width: 100%; }
+}

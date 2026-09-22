@@ -236,13 +236,42 @@ Easy to get wrong, and it changes what a "day" means:
   sidebar/mobile-nav markup in `index.html` (and, if it belongs there, the `moreMenu()`
   list in `app.js`). `window.navigate(page, ...params)` and `window.refreshPage()` are
   the globals pages use to move around / re-render themselves after a mutation.
-- **A picker inside a form previews, it does not dump.** Add Sevarthi's matching-seva
-  list is ranked best-fit first and shows five with a "Show N more seva" button; all
-  thirty-five buried the form's own fields under a wall of cards. Collapse it again
-  when the category filter changes. The same principle, different mechanism, applies
-  to a long *selection* list like the invitation checklist: that scrolls in its own
-  box rather than paging, because paging a multi-select means hunting for your ticks
-  across pages.
+- **Every entry sheet follows the same four rules, and the kit that enforces them
+  lives in `ui.js`.** The trust's verdict on the first version was that entering things
+  felt congested and hard, and the screenshots agreed: Add Seva asked its eight devotee
+  fields on step one *and again* on step four, its only footer button was "Close" (so
+  the action that actually moved the flow on was a seva card below the fold), every
+  optional field was as loud as the two required ones, and inputs were 0.9rem/40px —
+  which mobile Safari zooms into on focus. The rules, each borrowed from where admin and
+  ERP systems settled long ago:
+    1. **The footer carries the one action that moves the flow on.** `UI.sheetFooter(html,
+       binds)` replaces the footer between steps — a "next" that lives in the scrolling
+       body reads as no next at all. It wires `[data-sheet-close]` for you.
+    2. **A multi-step sheet says where you are.** `UI.steps(labels, current)` +
+       `UI.bindSteps(root, goStep)`. A finished step is a real `<button>`: going back to
+       fix a name must never mean starting over.
+    3. **Ask the required fields; fold the rest away.** `UI.moreFields(label, inner,
+       {open, count})` is a native `<details>`, so the fields stay in the DOM and
+       `readForm` still collects them (`folded.js` proves every folded field round-trips
+       to the API). A block that already holds an answer **opens itself** — a value the
+       operator cannot see is a value they cannot check — which is why editing an
+       existing record opens its detail and adding a new one does not.
+    4. **Open with what the entry is against.** `UI.contextCard({title, badge, sub,
+       rows})` — the header Record Payment always had, now on every sheet. `rows` take a
+       `'is-due'` class for the figure that is owed.
+  Also: `UI.bindEnterFlow(form, onLast)` walks Enter through the fields and fires the
+  primary action on the last, and `#sheet` widens to 880px with 16px/48px inputs
+  (`app-extras.css`, "DATA ENTRY"). Add Seva is the reference implementation — three
+  steps, no field asked twice, and the day screen shown only when a seva really has a
+  choice of days.
+- **A picker inside a form previews, it does not dump.** Add Seva's matching-seva
+  list is ranked best-fit first and shows eight with a "Show N more seva" button; all
+  thirty-five buried the form's own fields under a wall of cards. (It was five while
+  that list shared a screen with the devotee form; it is a step of its own now.)
+  Collapse it again when the category filter changes. The same principle, different
+  mechanism, applies to a long *selection* list like the invitation checklist: that
+  scrolls in its own box rather than paging, because paging a multi-select means
+  hunting for your ticks across pages.
 - **Page-level forms pair their fields into `.form-row` columns** and put buttons in a
   `.form-actions` row at natural width. A card in the content column is ~1300px wide,
   so one field per line leaves it half empty and a `btn-block` Save spans the lot.
