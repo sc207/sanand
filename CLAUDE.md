@@ -37,10 +37,16 @@ TEMPLE_DB=/tmp/t.db PORT=3100 node server/server.js
 
 **better-sqlite3 aborts the process if the database is still open at exit** — Node tears
 the isolate down first and the native cleanup hook asserts (`Assertion failed: (env) !=
-nullptr`) with a long native stack trace. This made `npm run dev` fail to come back on
-every save and `npm run seed` print a crash after doing its work. Both now call
-`db.close()` first (`server.js` on SIGINT/SIGTERM, `seed.js` at the end). Any new
-entry-point script that requires `./db` must do the same.
+nullptr`) with a long native stack trace, exit code 134. This made `npm run dev` fail to
+come back on every save and `npm run seed` print a crash after doing its work. Both now
+call `db.close()` first (`seed.js` at the end; `server.js` on SIGINT/SIGTERM/SIGHUP/
+SIGBREAK). Any new entry-point script that requires `./db` must do the same.
+
+**Close it on a signal, never in `process.on('exit')`.** An exit handler looks like the
+safe catch-all and is the opposite: it runs while the environment is already being torn
+down, so destroying the prepared statements there triggers the very assertion it was
+meant to prevent — the native trace points straight at `Statement::~destructor`. Adding
+one turned an occasional crash into a reliable one.
 
 Warm the local translator before an event so the first real use isn't slow:
 `curl -X POST localhost:3000/api/translate/warmup`
@@ -308,6 +314,29 @@ Easy to get wrong, and it changes what a "day" means:
   `window.__boot(pct, msg)` is the progress hook; the `<script>` tags between the page
   bundles call it. It is defined by the loader, so always call it guarded
   (`window.__boot && window.__boot(...)`).
+- **Every list exports itself — `export.js`, one column list, two outputs.** A page
+  declares `EXPORT_COLUMNS` once (`{ key, label, value(row), type }`) and an
+  `exportSpec()`, then calls `Export.toolbar(id)` in its heading and
+  `Export.bindToolbar(host, exportSpec)` after render. Payments, the devotee register,
+  Padhramni and Donations all do. `type` is `money` / `num` / `date`, plus `nowrap` for
+  a short label; it decides both how a cell prints and whether the CSV writes it bare.
+  Three rules the implementation exists to enforce:
+    - **Export what the filter says, not what the screen shows.** Lists page at 25 rows;
+      `exportSpec()` reads the page's own module state, so the file carries every
+      filtered row. It is called at *click* time, not render time, so it always
+      reflects the filter and search as they are now.
+    - **Stamp the filters on.** `meta` becomes rows above the CSV header and a line
+      under the printed title. A sheet that says "32 sevarthi" without saying "still to
+      collect" cannot be checked a month later.
+    - **Amounts are numbers in the spreadsheet, formatted only on the printed copy.**
+      `₹21,00,000` in a CSV cell is a string Excel cannot sum.
+  The CSV is the "Excel" export deliberately: no library is fetched at runtime, which
+  the offline rule forbids. Two details that are not optional — the file is written with
+  a **UTF-8 BOM** (without it Excel renders every Gujarati name as mojibake), and a cell
+  beginning `= + - @` is prefixed with an apostrophe, because a devotee's note would
+  otherwise be executed as a formula when the file is opened.
+  The PDF is the browser's own print engine via `openPrintDoc` — jsPDF/html2canvas need
+  a CDN, so there is no other option offline, and none is needed.
 - **A filter row marks its active choice with `btn-primary` against `btn-outline`** —
   solid maroon versus outline. Payments, Padhramni and Add Seva's "Matching seva" all
   use it; a new filter row should too. Add Seva's row used to be `.badge` pills whose

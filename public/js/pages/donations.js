@@ -5,7 +5,44 @@
           openSheet, closeSheet, readForm, clearFieldErrors, showFieldError, toast,
           lookupSelect, bindLookupAdders } = UI;
 
-  const state = { month: monthISO(), search: '' };
+  /* `rows`/`totals` are kept here, not just rendered, so the export can
+     take the whole fetched month rather than scraping the DOM. */
+  const state = { month: monthISO(), search: '', rows: [], totals: { total: 0, count: 0 } };
+
+  const EXPORT_COLUMNS = [
+    { key: 'date',     label: 'Date', type: 'date', value: (d) => d.donation_date || '' },
+    { key: 'name',     label: 'Donor',    value: (d) => d.donor_name || '' },
+    { key: 'mobile',   label: 'Mobile', nowrap: true, value: (d) => d.mobile || '' },
+    { key: 'city',     label: 'City',     value: (d) => d.city || '' },
+    { key: 'category', label: 'Category', value: (d) => d.category || '' },
+    { key: 'amount',   label: 'Amount',   type: 'money', value: (d) => d.amount || 0 },
+    { key: 'inkind',   label: 'In kind',  value: (d) => d.in_kind_item || '' },
+    { key: 'receipt',  label: 'Receipt no.', value: (d) => d.receipt_no || '' },
+    { key: 'notes',    label: 'Note',     value: (d) => d.notes || '' },
+  ];
+
+  function exportSpec() {
+    const [y, m] = state.month.split('-').map(Number);
+    const monthName = `${MONTHS[m - 1]} ${y}`;
+    return {
+      filename: 'Donations-' + state.month,
+      title: 'Donations — ' + monthName,
+      subtitle: 'Shri Vihat Meldi Dham (Sanand) · offerings recorded outside the Mahotsav seva',
+      columns: EXPORT_COLUMNS,
+      rows: state.rows,
+      meta: [
+        ['Month', monthName],
+        ...(state.search ? [['Search', state.search]] : []),
+        ['Entries', UI.num(state.rows.length)],
+        ['Total', money(state.totals.total || 0)],
+        ['Taken', new Date().toLocaleString()],
+      ],
+      totals: {
+        date: 'Total (' + UI.num(state.rows.length) + ')',
+        amount: state.rows.reduce((a, d) => a + (d.amount || 0), 0),
+      },
+    };
+  }
 
   async function render(host) {
     host.innerHTML = `
@@ -14,7 +51,10 @@
           <h1 class="banner-title mg-page-title">Donation</h1>
           <p class="mg-page-sub">Offerings recorded outside the Mahotsav seva</p>
         </div>
-        <button class="btn btn-primary mg-btn-xs" data-add>${icon('plus','ico-sm')} Donation</button>
+        <div class="mg-page-actions">
+          ${Export.toolbar('donExport')}
+          <button class="btn btn-primary mg-btn-xs" data-add>${icon('plus','ico-sm')} Donation</button>
+        </div>
       </div>
       <div class="card"><div class="card-body" style="padding:.7rem .8rem">
         <div class="cal-head" style="margin:0">
@@ -31,6 +71,7 @@
       <div id="donBody">${UI.loading(3)}</div>`;
 
     host.querySelector('[data-add]').addEventListener('click', () => openForm());
+    Export.bindToolbar(host, exportSpec);
     host.querySelectorAll('[data-nav]').forEach((b) =>
       b.addEventListener('click', () => {
         const [y, m] = state.month.split('-').map(Number);
@@ -50,6 +91,7 @@
     body.innerHTML = UI.loading(3);
     try {
       const { donations, totals } = await API.donations({ month: state.month, search: state.search });
+      state.rows = donations; state.totals = totals;
       body.innerHTML = `
         <div class="stats-grid" style="grid-template-columns:repeat(2,1fr)">
           <div class="stat"><div class="stat-card-title">This month</div>

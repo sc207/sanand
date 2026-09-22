@@ -861,11 +861,11 @@
           <div class="form-group">
             <label class="form-label">Paid by</label>
             <div class="btn-row">
-              <label class="badge pay-payer" style="padding:.5rem .8rem;cursor:pointer">
+              <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
                 <input type="radio" name="payer_type" value="devotee" ${asBapa ? '' : 'checked'} style="width:auto;min-height:0;margin-right:.35rem"> Devotee</label>
-              <label class="badge pay-payer" style="padding:.5rem .8rem;cursor:pointer">
+              <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
                 <input type="radio" name="payer_type" value="bhuvaji" ${asBapa ? 'checked' : ''} style="width:auto;min-height:0;margin-right:.35rem"> Bapa</label>
-              <label class="badge pay-payer" style="padding:.5rem .8rem;cursor:pointer">
+              <label class="badge" style="padding:.5rem .8rem;cursor:pointer">
                 <input type="radio" name="payer_type" value="both" style="width:auto;min-height:0;margin-right:.35rem"> Both</label>
             </div>
           </div>

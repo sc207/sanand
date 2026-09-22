@@ -60,6 +60,68 @@
   const fig = (k, v, cls) => `<div class="fig ${cls || ''}">
     <span class="fig-k">${esc(k)}</span><span class="fig-v">${esc(money(v))}</span></div>`;
 
+  /* One column list, used by the spreadsheet and the printed sheet
+     alike. Money is handed over raw so a CSV cell can be summed; the
+     formatting happens only on the printed copy. */
+  const EXPORT_COLUMNS = [
+    { key: 'name',     label: 'Sevarthi',     value: (b) => b.full_name },
+    { key: 'mobile',   label: 'Mobile', nowrap: true, value: (b) => b.mobile || '' },
+    { key: 'samaj',    label: 'Samaj',        value: (b) => b.samaj || '' },
+    { key: 'pooja',    label: 'Seva',         value: (b) => b.pooja_name },
+    { key: 'date',     label: 'Seva date', type: 'date', value: (b) => b.slot_date || 'Not fixed' },
+    { key: 'committed', label: 'Contribution', type: 'money', value: (b) => UI.coverage(b).committed },
+    { key: 'devotee',  label: 'Paid by devotee', type: 'money', value: (b) => UI.coverage(b).devotee_paid },
+    { key: 'bappa',    label: "Bapa's support",  type: 'money', value: (b) => UI.coverage(b).bappa_paid },
+    { key: 'covered',  label: 'Covered',      type: 'money', value: (b) => UI.coverage(b).covered },
+    { key: 'outstanding', label: 'Outstanding', type: 'money', value: (b) => UI.coverage(b).outstanding },
+    { key: 'excess',   label: 'Excess',       type: 'money', value: (b) => UI.coverage(b).excess },
+    { key: 'status',   label: 'Status', nowrap: true, value: (b) => STATUS_WORD[b.status] || b.status },
+    { key: 'lastpaid', label: 'Last paid', type: 'date', value: (b) => b.last_payment_date || '' },
+    { key: 'entries',  label: 'Payments',     type: 'num', value: (b) => b.payment_count || 0 },
+    { key: 'registered', label: 'Registered', type: 'date', value: (b) => String(b.created_at || '').slice(0, 10) },
+  ];
+
+  const STATUS_WORD = { pending: 'Pending', partially_paid: 'Part paid',
+                        paid: 'Covered', cancelled: 'Cancelled' };
+
+  /* Built at click time, not at render time, so it always carries the
+     filter and search as the operator has them now — and the whole
+     filtered set, not the 25 rows currently on screen. */
+  function exportSpec() {
+    const rows = state.bookings.filter((b) => matches(b, state.filter));
+    const label = (FILTERS.find((f) => f[0] === state.filter) || [])[1] || 'All';
+    const t = rows.reduce((a, b) => {
+      const c = UI.coverage(b);
+      a.committed += c.committed; a.devotee += c.devotee_paid; a.bappa += c.bappa_paid;
+      a.covered += c.covered; a.outstanding += c.outstanding; a.excess += c.excess;
+      return a;
+    }, { committed: 0, devotee: 0, bappa: 0, covered: 0, outstanding: 0, excess: 0 });
+
+    return {
+      filename: 'Payments-' + label,
+      title: 'Payments — ' + label,
+      subtitle: 'Shri Vihat Meldi Dham (Sanand) · Murti Pran Pratishtha Mahotsav',
+      columns: EXPORT_COLUMNS,
+      rows,
+      /* The filters are stamped on so a printed copy still says what it
+         was a report OF, a month after it left the printer. */
+      meta: [
+        ['Filter', label],
+        ...(state.search ? [['Search', state.search]] : []),
+        ['Sevarthi', UI.num(rows.length)],
+        ['Contribution', money(t.committed)],
+        ['Covered', money(t.covered)],
+        ['Outstanding', money(t.outstanding)],
+        ['Taken', new Date().toLocaleString()],
+      ],
+      totals: {
+        name: 'Total (' + UI.num(rows.length) + ')',
+        committed: t.committed, devotee: t.devotee, bappa: t.bappa,
+        covered: t.covered, outstanding: t.outstanding, excess: t.excess,
+      },
+    };
+  }
+
   async function render(host) {
     host.innerHTML = `
       <div class="flex justify-between items-center mg-page-head">
@@ -67,12 +129,16 @@
           <h1 class="banner-title mg-page-title">Payments</h1>
           <p class="mg-page-sub">Who still owes, and what to do about it</p>
         </div>
-        <button class="btn btn-primary mg-btn-xs" data-add>${icon('plus','ico-sm')} Payment</button>
+        <div class="mg-page-actions">
+          ${Export.toolbar('payExport')}
+          <button class="btn btn-primary mg-btn-xs" data-add>${icon('plus','ico-sm')} Payment</button>
+        </div>
       </div>
 
       <div id="payView"></div>`;
 
     host.querySelector('[data-add]').addEventListener('click', () => Forms.addPayment());
+    Export.bindToolbar(host, exportSpec);
     await renderCollect(document.getElementById('payView'));
   }
 

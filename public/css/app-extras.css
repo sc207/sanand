@@ -933,3 +933,20 @@ dialog#sheet::backdrop { background: transparent; }
 }
 .vis-line .ico { flex-shrink: 0; margin-top: .12rem; color: var(--muted-brown); }
 .vis-line .muted { color: var(--muted-brown); }
+
+/* ---------- Export toolbar ---------------------------------------------
+   The same pair of buttons on every list, so an operator who finds the
+   export once finds it everywhere. */
+.export-bar { display: flex; gap: .45rem; flex-wrap: wrap; }
+@media (max-width: 560px) { .export-bar { width: 100%; } .export-bar .btn { flex: 1 1 auto; } }
+
+/* The printed sheet's own wrapper — no app chrome, no content cap. */
+.ex-wrap { max-width: none; padding: 0; margin: 0; }
+
+/* Page heading actions — export pair plus the page's own primary button.
+   Wraps under the title on a phone rather than squeezing it. */
+.mg-page-actions { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .mg-page-actions { width: 100%; margin-top: .6rem; }
+  .mg-page-actions > .btn { flex: 1 1 auto; }
+}

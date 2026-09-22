@@ -73,3 +73,12 @@ function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 process.on('SIGHUP', shutdown);
+process.on('SIGBREAK', shutdown);     // Windows console close / Ctrl-Break
+
+/* Deliberately NOT `process.on('exit', () => db.close())`. It reads like
+   a safe last line of defence and is the opposite: an `exit` handler runs
+   while the environment is already being torn down, so destroying the
+   prepared statements there is what trips the very assertion it was
+   meant to avoid (the native trace points at `Statement::~destructor`).
+   Closing must happen on a signal, before teardown starts — which is
+   what the handlers above do. */

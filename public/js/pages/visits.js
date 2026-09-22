@@ -37,6 +37,45 @@
     confirmed: { to: 'completed', label: 'Mark done' },
   };
 
+  /* A padhramni list is carried out of the office, so the printed sheet
+     is the real output here: who, where, when, and who is leading it. */
+  const EXPORT_COLUMNS = [
+    { key: 'date',    label: 'Date', type: 'date', value: (v) => v.visit_date || '' },
+    { key: 'time',    label: 'Time',     value: (v) => v.visit_time || '' },
+    { key: 'when',    label: 'How soon', nowrap: true, value: (v) => UI.whenDay(v.visit_date).label },
+    { key: 'name',    label: 'Devotee',  value: (v) => v.devotee_name },
+    { key: 'mobile',  label: 'Mobile', nowrap: true, value: (v) => v.mobile || '' },
+    { key: 'city',    label: 'City',     value: (v) => v.city || '' },
+    { key: 'address', label: 'Address',  value: (v) => v.address || '' },
+    { key: 'samaj',   label: 'Samaj',    value: (v) => v.samaj || '' },
+    { key: 'purpose', label: 'Purpose',  value: (v) => v.purpose || '' },
+    { key: 'escorts', label: 'Escort',   value: (v) => (v.escorts || []).map((e) => e.full_name).join(', ') },
+    { key: 'status',  label: 'Status', nowrap: true, value: (v) => (v.status || '').replace(/^\w/, (c) => c.toUpperCase()) },
+    { key: 'notes',   label: 'Note',     value: (v) => v.notes || '' },
+  ];
+
+  function exportSpec() {
+    const rows = state.rows;
+    const label = (FILTERS.find((f) => f[0] === state.filter) || [])[1] || 'All';
+    const overdue = rows.filter((v) => v.status !== 'completed' && v.status !== 'cancelled'
+      && UI.whenDay(v.visit_date).days < 0).length;
+    return {
+      filename: 'Padhramni-' + label,
+      title: 'Bappa / Bhuvaji Padhramni — ' + label,
+      subtitle: "Shri Vihat Meldi Dham (Sanand) · visits to devotees' homes and shops",
+      columns: EXPORT_COLUMNS,
+      rows,
+      meta: [
+        ['View', label],
+        ...(state.search ? [['Search', state.search]] : []),
+        ['Padhramni', UI.num(rows.length)],
+        ...(overdue ? [['Past their date, still open', UI.num(overdue)]] : []),
+        ['Taken', new Date().toLocaleString()],
+      ],
+      totals: { date: 'Total (' + UI.num(rows.length) + ')' },
+    };
+  }
+
   async function render(host) {
     host.innerHTML = `
       <div class="flex justify-between items-center mg-page-head">
@@ -44,7 +83,10 @@
           <h1 class="banner-title mg-page-title">Bappa / Bhuvaji Padhramni</h1>
           <p class="mg-page-sub">Visits to devotees' homes and shops</p>
         </div>
-        <button class="btn btn-primary mg-btn-xs" data-add>${icon('plus','ico-sm')} Visit</button>
+        <div class="mg-page-actions">
+          ${Export.toolbar('visExport')}
+          <button class="btn btn-primary mg-btn-xs" data-add>${icon('plus','ico-sm')} Visit</button>
+        </div>
       </div>
 
       <div id="visSummary"></div>
@@ -60,6 +102,7 @@
       <div id="visBody">${UI.loading(3)}</div>`;
 
     host.querySelector('[data-add]').addEventListener('click', () => openForm());
+    Export.bindToolbar(host, exportSpec);
     host.querySelectorAll('[data-filter]').forEach((b) =>
       b.addEventListener('click', () => {
         state.filter = b.getAttribute('data-filter'); state.page = 1; render(host);

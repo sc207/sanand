@@ -32,6 +32,72 @@
   const opt = (v, label, cur) =>
     `<option value="${attr(v)}" ${String(v) === String(cur) ? 'selected' : ''}>${esc(label)}</option>`;
 
+  /* The register as a file. Same eight fields the form is locked to,
+     plus the money and activity the list shows — money raw, so the
+     spreadsheet can total a samaj. */
+  const EXPORT_COLUMNS = [
+    { key: 'name',      label: 'Name',        value: (d) => d.full_name },
+    { key: 'mobile',    label: 'Mobile', nowrap: true, value: (d) => d.mobile || '' },
+    { key: 'city',      label: 'City',        value: (d) => d.city || '' },
+    { key: 'state',     label: 'State',       value: (d) => d.state || '' },
+    { key: 'mul',       label: 'Mul vatan',   value: (d) => d.mul_vatan || '' },
+    { key: 'samaj',     label: 'Samaj',       value: (d) => d.samaj || '' },
+    { key: 'category',  label: 'Category',    value: (d) => d.category || '' },
+    { key: 'seva',      label: 'Seva',        type: 'num',   value: (d) => d.booking_count || 0 },
+    { key: 'committed', label: 'Committed',   type: 'money', value: (d) => d.total_committed || 0 },
+    { key: 'paid',      label: 'Contributed', type: 'money', value: (d) => d.total_paid || 0 },
+    { key: 'bappa',     label: "Bapa's support", type: 'money', value: (d) => d.bappa_paid || 0 },
+    { key: 'outstanding', label: 'Outstanding', type: 'money', value: (d) => d.outstanding || 0 },
+    { key: 'donations', label: 'Donations',   type: 'money', value: (d) => d.donation_total || 0 },
+    { key: 'visits',    label: 'Padhramni',   type: 'num',   value: (d) => d.visit_count || 0 },
+    { key: 'cancelled', label: 'Cancelled seva', type: 'num', value: (d) => d.cancelled_count || 0 },
+    { key: 'since',     label: 'On register since', type: 'date', value: (d) => String(d.created_at || '').slice(0, 10) },
+    { key: 'notes',     label: 'Note',        value: (d) => d.notes || '' },
+  ];
+
+  function exportSpec() {
+    // Sorted as the operator left it, and the whole filtered set.
+    const rows = [...state.rows].sort(sorters[state.sort] || sorters.name);
+    const named = (sel, id) => {
+      const el = document.getElementById(sel);
+      if (!el || !id) return '';
+      const o = [...el.options].find((x) => String(x.value) === String(id));
+      return o ? o.textContent.trim() : '';
+    };
+    const t = rows.reduce((a, d) => {
+      a.committed += d.total_committed || 0; a.paid += d.total_paid || 0;
+      a.bappa += d.bappa_paid || 0; a.outstanding += d.outstanding || 0;
+      a.donations += d.donation_total || 0;
+      if (!d.mobile) a.noMobile++;
+      return a;
+    }, { committed: 0, paid: 0, bappa: 0, outstanding: 0, donations: 0, noMobile: 0 });
+
+    const samaj = named('devSamaj', state.samajId);
+    const category = named('devCategory', state.categoryId);
+    return {
+      filename: 'Devotee-Register' + (samaj ? '-' + samaj : ''),
+      title: 'Devotee Register' + (samaj ? ' — ' + samaj : ''),
+      subtitle: "Shri Vihat Meldi Dham (Sanand) · the temple's permanent register",
+      columns: EXPORT_COLUMNS,
+      rows,
+      meta: [
+        ...(samaj ? [['Samaj', samaj]] : []),
+        ...(category ? [['Category', category]] : []),
+        ...(state.search ? [['Search', state.search]] : []),
+        ['Sorted by', (SORTS.find((s) => s[0] === state.sort) || [])[1] || ''],
+        ['Devotees', UI.num(rows.length)],
+        ['Contributed', money(t.paid)],
+        ...(t.noMobile ? [['No mobile on record', UI.num(t.noMobile)]] : []),
+        ['Taken', new Date().toLocaleString()],
+      ],
+      totals: {
+        name: 'Total (' + UI.num(rows.length) + ')',
+        committed: t.committed, paid: t.paid, bappa: t.bappa,
+        outstanding: t.outstanding, donations: t.donations,
+      },
+    };
+  }
+
   async function render(host) {
     const [samaj, categories] = await Promise.all([
       API.lookups('samaj'), API.lookups('devotee_category'),
@@ -43,7 +109,10 @@
           <h1 class="banner-title mg-page-title">Devotee</h1>
           <p class="mg-page-sub">The temple's permanent register</p>
         </div>
-        <button class="btn btn-primary mg-btn-xs" data-add>${icon('plus','ico-sm')} Devotee</button>
+        <div class="mg-page-actions">
+          ${Export.toolbar('devExport')}
+          <button class="btn btn-primary mg-btn-xs" data-add>${icon('plus','ico-sm')} Devotee</button>
+        </div>
       </div>
 
       <div id="devSummary"></div>
@@ -69,6 +138,7 @@
       <div id="devBody">${UI.loading(4)}</div>`;
 
     host.querySelector('[data-add]').addEventListener('click', () => openForm());
+    Export.bindToolbar(host, exportSpec);
     host.querySelector('#devSearch').addEventListener('input',
       debounce((e) => { state.search = e.target.value.trim(); state.page = 1; load(); }, 280));
     host.querySelector('#devSamaj').addEventListener('change', (e) => {
