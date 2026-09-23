@@ -37,6 +37,16 @@ dead there, which is how the first run of this deleted fifteen real poojas as ju
 
 **Accounts are deliberately untouched by reset.** An account is a person, not test data.
 
+**`seed:demo` writes everything in ONE transaction, and says what actually landed.** The
+better-sqlite3 abort above is intermittent, and twice it killed the script between its
+separate seats / donations / padhramni transactions — leaving ten devotees and ten seva
+with no donations and no padhramni, which looks seeded and is not. Seats are *not*
+idempotent, so the obvious reaction (run it again) silently doubles them. As one
+transaction a crash rolls the lot back, and the script re-counts the tables at the end and
+prints **"NOT ten of everything"** rather than its success line. Do not "optimise" it by
+hoisting its `db.prepare` calls into a module-scope object — that was tried, and it turned
+the intermittent abort into one that fired on every single run.
+
 `seed:demo` is small on purpose — `seed-dummy.js` covers every booking state at once and
 makes a few hundred rows doing it, which is right for checking money logic and wrong for
 looking at a screen. The ten it creates carry one of each state worth seeing (pending,
@@ -437,6 +447,23 @@ Easy to get wrong, and it changes what a "day" means:
   rings; and `.lead-v` inherits `--font-heading` (Cinzel), which renders lowercase as
   small caps — right for a figure, wrong for a phrase like "In 3 days", so the padhramni
   lead overrides it back to `--font-body`.
+- **An `auto` side margin on a flex item eats ALL the free space in the line.** The bottom
+  bar's centre "+" carried `margin: -18px auto 0`, so the 106 spare pixels on a 390px bar
+  went entirely into two 53px gaps either side of it: Home and Mahotsav were shoved against
+  the left edge (Home at x=0, touching the screen), Payments and More against the right, and
+  the middle was a hole. The bar's own `justify-content: space-around` never got a say,
+  because there was nothing left for it to distribute — which is why the rule that looked
+  responsible was innocent. The lift is vertical and stays; the horizontal autos are gone,
+  and the four labelled stops take `flex: 1 1 0` so the bar divides evenly however long the
+  words are.
+- **A figure strip of FIVE does not divide by two.** `app-extras.css` forces two columns
+  under 900px (right for the four-figure strips on the list pages) and that swept the
+  dashboard's five in with them, leaving Excess alone in the left column at half width with
+  dead space beside it — read from a phone as a tile that had failed to load. The fifth
+  child takes `grid-column: 1 / -1` in both the ≤560 and the 561–900 blocks. **Put such a
+  correction inside the block it corrects**, not at the end of the sheet: the 900px
+  one-column rule for five tiles was already being silently overridden by two later blocks
+  of equal specificity, which is exactly how this shipped.
 - **The sidebar is an off-canvas drawer below 1200px, and `setDrawer` in `app.js` owns
   everything that follows from it being open.** It used to only know how to open: tapping
   a link inside it navigated and left the drawer sitting over the page you had just asked
@@ -742,6 +769,18 @@ The page is a **page, not a sheet** — the one deliberate exception to "every f
 the sheet", because it is not a form but a check screen, and its preview table needs the
 width. It shows the format *before* asking for a file: an operator who learns the columns
 from an error message has already wasted an afternoon in Excel.
+
+**`.imp-cols` and `.imp-rows` must not stack like the workbench tables.** `table.dt`'s
+generic stacking below 860px gives every cell its own line under its own `data-k` heading,
+which is right for a row carrying a name, four figures and actions. These two are three
+short columns, and the generic treatment made 122px rows that read HEADING / Mobile /
+NEEDED / Required / WHAT GOES IN IT / …, repeating two headings eighteen times: the
+sevarthi format ran to 2196px and buried the "Choose the file" card 2900px down a 3234px
+page — the operator had to scroll past the whole specification to reach the thing it
+explained. From 561px they stay real tables (tablet portrait was getting the phone layout
+for no reason); below that each row is one compact entry. Note the `::before` reset has to
+match the generic rule's shape — `td:not(:first-child):not(.dt-act)::before` — or it loses
+the specificity contest and the labels come back *underneath a visible header row*.
 
 ### CSS — read this before changing styles
 

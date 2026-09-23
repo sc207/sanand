@@ -26,6 +26,7 @@
 const db = require('./db');
 const { todayLocal } = require('./util/dates');
 const receipts = require('./util/receipts');
+const { refreshStatus } = require('./routes/bookings');
 
 const BY = 'Demo seed';
 
@@ -125,7 +126,24 @@ const SEATS = [
   { who: 2, slot: pick(9), amount: 5000,   pay: 5000,  cancel: true,     label: 'cancelled after paying' },
 ];
 
+/* ------------------------------------------------------------------
+   EVERYTHING BELOW IS ONE TRANSACTION.
+
+   It used to be three — seats, then donations, then padhramni — and
+   twice during this work the process died between two of them
+   (better-sqlite3's native abort; it is intermittent and does not
+   reproduce to order). Each time the result was a database holding ten
+   devotees and ten seva but no donations and no padhramni, which looks
+   seeded and is not. Worse, seats are NOT idempotent, so the obvious
+   reaction — run it again — silently doubles them.
+
+   As one transaction, a crash rolls the lot back: either ten of
+   everything, or nothing to clean up and a re-run that is safe.
+   better-sqlite3 nests through savepoints, so the inner
+   db.transaction calls below still work unchanged.
+   ------------------------------------------------------------------ */
 let seats = 0, paid = 0;
+const seedEverything = db.transaction(() => {
 db.transaction(() => {
   SEATS.forEach((s) => {
     const bapaShare = s.gift ? s.amount : (s.bapa || 0);
@@ -164,7 +182,6 @@ console.log(`  ${seats} seats, ${paid} payments`);
 
 /* Status is derived from the ledger and never written by hand, so it
    is recomputed here the same way every route does. */
-const { refreshStatus } = require('./routes/bookings');
 db.prepare(`SELECT id FROM sevarthi_bookings WHERE status <> 'cancelled'`).all()
   .forEach((b) => refreshStatus(b.id));
 
@@ -220,6 +237,24 @@ db.transaction(() => {
   });
 })();
 console.log(`  ${vis} padhramni`);
+});                                  // ---- end of the one transaction ----
 
-console.log('\n  Ten of everything. Seva, samaj and the categories were left as they were.\n');
+seedEverything();
+
+/* Report what is actually in there, not what was meant to be. Handing
+   back a half-seeded database without saying so is the failure this
+   script has to stop. */
+const got = {
+  devotees: db.prepare(`SELECT COUNT(*) n FROM devotees`).get().n,
+  seva: db.prepare(`SELECT COUNT(*) n FROM sevarthi_bookings`).get().n,
+  donations: db.prepare(`SELECT COUNT(*) n FROM donations`).get().n,
+  padhramni: db.prepare(`SELECT COUNT(*) n FROM visits`).get().n,
+};
+const short = Object.entries(got).filter(([, n]) => n < 10);
+if (short.length) {
+  console.log('\n  NOT ten of everything — ' + short.map(([k, n]) => `${k}: ${n}`).join(', ') +
+              '\n  Run the clean-start sequence again.\n');
+} else {
+  console.log('\n  Ten of everything. Seva, samaj and the categories were left as they were.\n');
+}
 db.close();

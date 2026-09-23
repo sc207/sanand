@@ -212,14 +212,36 @@ html.lang-gu .lang-toggle [data-lang-gu] { background: var(--primary-maroon); co
 .toast-container { bottom: calc(var(--mobile-nav-height) + 1rem); }
 @media (min-width: 1025px) { .toast-container { bottom: 1.5rem; } }
 
-/* The centre "+" on the mobile bar */
+/* The centre "+" on the mobile bar.
+
+   `margin: -18px auto 0` was the bug the trust reported as "this menu
+   is not proper". An `auto` side margin on a flex item absorbs ALL the
+   free space in the line, so the bar's 106 spare pixels went entirely
+   into two 53px gaps either side of the "+": Home and Mahotsav were
+   shoved hard against the left edge (Home literally at x=0, touching
+   the screen), Payments and More against the right, and the middle was
+   a hole. `justify-content: space-around` on the bar never got a say,
+   because there was nothing left to distribute.
+
+   The lift stays; only the horizontal autos go. Every other stop then
+   takes an equal share of what is left, so the five are evenly spaced
+   whatever their labels are called. */
 .mobile-nav-item.mob-fab {
   background: linear-gradient(135deg, var(--saffron), var(--primary-maroon));
   color: #fff; border-radius: 50%; width: 52px; height: 52px;
-  margin: -18px auto 0; box-shadow: var(--shadow-md);
+  margin: -18px 0 0; box-shadow: var(--shadow-md);
   border: 3px solid var(--warm-ivory); align-self: center;
   display: flex; align-items: center; justify-content: center;
+  flex: 0 0 52px;
 }
+/* Equal columns for the four labelled stops, so the bar divides evenly
+   instead of by how long each word happens to be. */
+.mobile-bottom-nav > .mobile-nav-item:not(.mob-fab) {
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* And keep the outermost two off the screen edge. */
+.mobile-bottom-nav { padding: 0 .3rem; }
 .mobile-nav-item.mob-fab .ico { width: 25px; height: 25px; color: #fff; }
 
 /* Two fields side by side — styles.css has no form-row of its own */
@@ -1168,6 +1190,17 @@ dialog#sheet::backdrop { background: transparent; }
     grid-column: auto;
     border-top: 0;
   }
+  /* Five figures do not divide by two. Left to itself the fifth sits
+     alone in the left column at half width with dead space beside it,
+     which reads as a tile that failed to load rather than the last of
+     a set — the dashboard's Excess figure, reported from a phone. It
+     takes the whole row instead. This rule has to live INSIDE this
+     block, after the `grid-column: auto` above: putting the correction
+     at the end of the sheet is how the 900px one-column rule came to
+     be silently overridden from down there in the first place. */
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(5) {
+    grid-column: 1 / -1;
+  }
   .stats-grid > * { padding: .7rem .8rem; border-top: 0; }
   /* Hairlines come back, because there are rows and columns again:
      a rule above every cell past the first pair, and one to the left
@@ -1471,6 +1504,12 @@ table.dt td.dt-act, table.dt th.dt-act { width: 1%; white-space: nowrap; text-al
   .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(5) {
     grid-column: auto;
   }
+  /* The odd one out takes the whole row here too — same reason as the
+     phone block above. This breakpoint covers tablet portrait, where
+     the orphan is just as visible. */
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(5) {
+    grid-column: 1 / -1;
+  }
   .stats-grid > * { border-top: 0; }
   .stats-grid > *:nth-child(n+3) { border-top: 1px solid var(--warm-border); }
   .stats-grid > *:nth-child(even)::before {
@@ -1675,15 +1714,120 @@ body.drawer-open { overflow: hidden; }
 .imp-tally li { margin: 4px 0; font-size: .92rem; }
 .imp-done .imp-ok { font-size: .95rem; align-items: center; }
 
-/* ---- phone ----
-   The format and preview tables stack through `table.dt`'s own rules,
-   which need their `n` width undone the same way every other stacked
-   table here does. The kind cards go to one column so a tap target is
-   the width of the thumb, not a third of it. */
+/* ---- phone and tablet ----
+   The kind cards go to one column so a tap target is the width of the
+   thumb, not a third of it, and the `n` column width is undone the way
+   every other stacked table here does it. */
 @media (max-width: 860px) {
   .imp-kinds { grid-template-columns: 1fr; }
   .imp-head { flex-direction: column; align-items: stretch; }
   .imp-head .btn { width: 100%; justify-content: center; }
   .imp-drop { padding: 24px 14px; }
   .imp-rows td.n, .imp-cols td.n { width: auto; }
+}
+
+/* ---- the format table is not a data table, and must not stack like one ----
+
+   `table.dt`'s generic stacking exists for the workbench tables, whose
+   rows carry a name, four figures and a row of actions; below 860px it
+   turns every cell into its own line under its own `data-k` heading.
+   Applied to this table — which is three short columns, one of them a
+   single word — it produced 122px-tall rows that read
+
+       HEADING
+       Mobile
+       NEEDED
+       Required
+       WHAT GOES IN IT
+       Digits — at least 10...
+
+   repeating two headings eighteen times. The sevarthi format ran to
+   2196px of table, and the "Choose the file" card that the step exists
+   to reach ended up 2900px down a 3234px page. Measured on a phone:
+   the operator had to scroll past the entire specification to get to
+   the thing it was explaining.
+
+   Two treatments, because the two widths have different problems.
+   From 561px there is room for the real three-column table, so the
+   stacking is simply undone — tablet portrait was getting the phone
+   layout for no reason, since the 860px breakpoint is set for tables
+   far wider than this one. */
+@media (min-width: 561px) and (max-width: 860px) {
+  table.dt.imp-cols, table.dt.imp-rows { display: table; width: 100%; }
+  table.dt.imp-cols thead, table.dt.imp-rows thead { display: table-header-group; }
+  table.dt.imp-cols tbody, table.dt.imp-rows tbody { display: table-row-group; }
+  table.dt.imp-cols tr, table.dt.imp-rows tr { display: table-row; }
+  table.dt.imp-cols td, table.dt.imp-cols th,
+  table.dt.imp-rows td, table.dt.imp-rows th { display: table-cell; padding: .6rem .5rem; }
+  /* Match the generic rule's shape, or lose to it. The stacking writes
+     the column name into every cell with
+        table.dt td:not(:first-child):not(.dt-act)::before
+     which outweighs a plain `table.dt.imp-cols td::before` — so the
+     table came back but every row still carried NEEDED and WHAT GOES
+     IN IT under the heading row that already said both. */
+  table.dt.imp-cols td:not(:first-child):not(.dt-act)::before,
+  table.dt.imp-rows td:not(:first-child):not(.dt-act)::before { content: none; }
+  /* table.dt reserves 14rem and 11rem for its first two columns, which
+     is 400px of minimum before the third column gets a pixel. These
+     tables' first two hold a heading and one word, and a line number
+     and a name. */
+  table.dt.imp-cols th:first-child, table.dt.imp-cols th:nth-child(2),
+  table.dt.imp-rows th:first-child, table.dt.imp-rows th:nth-child(2) { min-width: 0; }
+  table.dt.imp-cols td:first-child { width: 1%; white-space: nowrap; }
+  table.dt.imp-rows td.n { width: 1%; text-align: right; white-space: nowrap; }
+}
+
+/* Below that there genuinely is not room for three columns, so the row
+   becomes one compact entry instead: the heading and whether it is
+   needed on one line, what goes in it underneath. No repeated labels —
+   the heading IS the label. ~52px a row rather than 122px. */
+@media (max-width: 560px) {
+  table.dt.imp-cols tbody tr {
+    display: block;
+    padding: .5rem 0;
+    border-bottom: 1px solid var(--warm-border);
+  }
+  table.dt.imp-cols tbody tr:last-child { border-bottom: 0; }
+  table.dt.imp-cols td { display: inline; padding: 0; }
+  table.dt.imp-cols td:not(:first-child):not(.dt-act)::before { content: none; }
+  table.dt.imp-cols td:nth-child(2) { margin-left: .4rem; }
+  /* "Required" is a .badge (inline-block) but "Optional" is a
+     .mg-muted-xs, which is a block — so the two halves of the same
+     answer sat on different lines, and every optional column took a
+     line more than every required one for no reason the reader could
+     see. Both sit beside the heading now. */
+  table.dt.imp-cols td:nth-child(2) > * { display: inline-block; vertical-align: middle; }
+  table.dt.imp-cols td:nth-child(3) {
+    display: block;
+    margin-top: .3rem;
+    color: var(--muted-brown);
+    font-size: .82rem;
+    line-height: 1.45;
+  }
+
+  /* The preview table gets the same compact treatment: which line and
+     who on one line, what will happen to them underneath. A wrong row
+     is acted on by going back to that line in Excel, so the number
+     leads and says what it is — a bare "4" above a name means nothing
+     once the column heading is gone. */
+  table.dt.imp-rows tbody tr {
+    display: block;
+    padding: .55rem 0;
+    border-bottom: 1px solid var(--warm-border);
+  }
+  table.dt.imp-rows tbody tr:last-child { border-bottom: 0; }
+  table.dt.imp-rows td { display: inline; padding: 0; }
+  table.dt.imp-rows td:not(:first-child):not(.dt-act)::before { content: none; }
+  table.dt.imp-rows td.n { text-align: left; width: auto; }
+  table.dt.imp-rows td:first-child::before {
+    content: 'Line ';
+    color: var(--muted-brown);
+  }
+  table.dt.imp-rows td:nth-child(2) { margin-left: .35rem; font-weight: 600; }
+  table.dt.imp-rows td:nth-child(3) { display: block; margin-top: .35rem; }
+  /* Tint the ROW, not the cells. Inline cells only shade behind their
+     own text, so a wrong row came out as two ragged pink patches with
+     white between them rather than one band. */
+  table.dt.imp-rows tbody tr.imp-bad { background: var(--danger-bg); padding-inline: .5rem; }
+  table.dt.imp-rows tbody tr.imp-bad > td { background: transparent; }
 }
