@@ -140,6 +140,16 @@
      ============================================================ */
   const spec = () => state.kinds.find((k) => k.key === state.kind) || { columns: [] };
 
+  /* A sevarthi sheet cannot be written against a Mahotsav that has no
+     seva on it — every row's Seva column has to name one — and the
+     template quite correctly comes back as headings with nothing under
+     them. Said here, because an operator who meets it as "the sheet
+     has headings but no rows" on the next screen has been told what
+     happened and not why. */
+  const noSeva = () => state.kind === 'sevarthi'
+    && Array.isArray(state.seva)
+    && !state.seva.some((p) => p.status !== 'closed');
+
   BODY[1] = () => {
     const s = spec();
     const req = s.columns.filter((c) => c.required);
@@ -155,6 +165,13 @@
           : state.kind === 'sevarthi' ? 'seva taken'
           : state.kind === 'donations' ? 'donation' : 'visit'}, with the headings below in the
           first row.</p>
+        ${noSeva() ? `<div class="imp-error">
+          ${icon('alert', 'ico-sm')}
+          <span><strong>There is no seva to register anyone against yet.</strong>
+          The Seva column has to name one from the Mahotsav list, so the template comes
+          with no example rows until that list exists. Add the seva first —
+          <a href="#/mahotsav">Pran Pratishtha</a> — then come back.</span>
+        </div>` : ''}
         <div class="imp-req">
           ${icon('alert', 'ico-sm')}
           <span>Required: ${req.map((c) => `<strong>${esc(c.label)}</strong>`).join(', ')}.

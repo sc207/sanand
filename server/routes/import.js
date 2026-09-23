@@ -59,36 +59,131 @@ router.get('/kinds', (req, res) => {
    UTF-8 BOM for the same reason the exports do — without it Excel
    renders every Gujarati name as mojibake.
 
-   The example row is real data shaped like the mandir's own, because a
-   template with "string, string, string" in it teaches nothing about
-   what a date or an amount should look like.
+   The example rows are real data shaped like the mandir's own, because
+   a template with "string, string, string" in it teaches nothing about
+   what a date or an amount should look like. They are read out of the
+   database rather than written here — see examples() below for why.
 */
-const EXAMPLES = {
-  devotees: [
-    ['Rasikbhai Patel', '9825110001', 'Ahmedabad', 'Gujarat', 'Sanand', 'Patel Samaj', 'VIP', 'Knows the trustees'],
-    ['ભચીબેન રબારી', '9825110003', 'Sanand', 'Gujarat', '', 'Rabari Samaj', 'Normal', ''],
-  ],
-  sevarthi: [
-    ['Rasikbhai Patel', '9825110001', 'Ahmedabad', 'Gujarat', 'Sanand', 'Patel Samaj', 'VIP', '',
-      'Mukhya Patlo', '2027-02-04', '2100000', '500000', 'No', '1000000', '500000', '2026-09-20', '', 'Paid at the mandir'],
-    ['Devshi Rabari', '9825110002', 'Viramgam', 'Gujarat', '', 'Rabari Samaj', 'Normal', '',
-      'Bhagvat Saptah Katha', '', '21000', '', 'No', '', '', '', '', ''],
-  ],
-  donations: [
-    ['2026-09-20', 'Hansaben Patel', '9825110006', 'Annadan', '11000', '', '', ''],
-    ['2026-09-21', 'Ramesh Prajapati', '9825110008', 'Annadan', '', '51 kg ghee', '', 'Given at the mandir'],
-  ],
-  visits: [
-    ['2026-10-02', '17:00', 'Rasikbhai Patel', '9825110001', 'Ahmedabad', '12, Temple Road', 'Griha shanti', 'requested', ''],
-    ['2026-10-05', '10:30', 'Devshi Rabari', '9825110002', 'Viramgam', '', 'New house', 'confirmed', 'Ring the day before'],
-  ],
-};
+/* THE EXAMPLE ROWS ARE READ OUT OF THE DATABASE, NEVER HARDCODED, and
+   that is the whole point of the code below. They used to be fixed
+   strings, and both sevarthi rows had rotted where nobody could see it:
+   "Bhagvat Saptah Katha" was a seva that does not exist, and "Mukhya
+   Patlo" is a single seat somebody had already taken. So the template
+   the app handed an operator failed its own check on every row of it —
+   download, upload, two errors, before they had typed anything. That is
+   the first thing a new operator does, and it reads as the importer
+   being broken rather than as the example being stale.
+
+   A name copied into this file is only right until the trust edits a
+   list; a name picked from the list is right by construction. The same
+   goes for the samaj and the category — `create_lookups` is off by
+   default, so a stale one there is an error too, not a silent insert.
+*/
 
 /* The done screen prints this summary above a tally the client has
    already formatted, so a bare 1551000 sat one line above ₹15,51,000
    and read as two different figures. Lakhs grouping, as misc.js does
    it and as UI.money does it on every other screen. */
 const rupees = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
+
+const lookupValues = (type, n) => db.prepare(
+  `SELECT value FROM lookups WHERE type = ? AND active = 1
+    ORDER BY sort_order, id LIMIT ?`).all(type, n).map((r) => r.value);
+
+/** today + n days, local — see util/dates on why never toISOString. */
+const inDays = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toLocaleDateString('en-CA');
+};
+
+/* An open seva with room on it. The preferences, in order, each close
+   one way the example could still fail by the time it is uploaded:
+   nobody booked on it yet (or the row comes back "already present"
+   instead of importing), then no seat limit at all (or it can fill up
+   between the download and the upload), then the plainest name — it
+   goes into a CSV cell an operator may retype by hand, and a name like
+   "Yagna Patla — ₹51,000" carries a comma that has to survive quoting.
+   `dated` chooses which lesson the row teaches: naming the day, or
+   leaving it blank. */
+function exampleSeva(dated, exclude) {
+  const rows = db.prepare(`
+    SELECT pe.name, ps.slot_date, ps.capacity, ps.booked_count,
+           (SELECT COUNT(*) FROM pooja_slots x WHERE x.pooja_id = pe.id) AS slot_count
+      FROM pooja_events pe
+      JOIN pooja_slots ps ON ps.pooja_id = pe.id
+     WHERE pe.status <> 'closed'
+       AND (ps.capacity IS NULL OR ps.booked_count < ps.capacity)`).all();
+
+  const awkward = (n) => /[,"]/.test(n);
+  const usable = rows.filter((r) => Boolean(r.slot_date) === dated
+    /* A blank Seva date only resolves when the seva has one day. */
+    && (r.slot_date || r.slot_count === 1)
+    && r.name !== exclude);
+
+  usable.sort((a, b) =>
+    (a.booked_count ? 1 : 0) - (b.booked_count ? 1 : 0)
+    || (a.capacity === null ? 0 : 1) - (b.capacity === null ? 0 : 1)
+    || (awkward(a.name) ? 1 : 0) - (awkward(b.name) ? 1 : 0)
+    || a.name.length - b.name.length
+    || a.name.localeCompare(b.name));
+
+  return usable[0] || null;
+}
+
+function examples(kind) {
+  const [samaj0, samaj1] = lookupValues('samaj', 2);
+  const [cat0, cat1] = lookupValues('devotee_category', 2);
+  const s0 = samaj0 || '';
+  const s1 = samaj1 || s0;
+  const c0 = cat0 || '';
+  const c1 = cat1 || c0;
+
+  if (kind === 'devotees') {
+    return [
+      ['Rasikbhai Patel', '9825110001', 'Ahmedabad', 'Gujarat', 'Sanand', s0, c0, 'Knows the trustees'],
+      ['ભચીબેન રબારી', '9825110003', 'Sanand', 'Gujarat', '', s1, c1, ''],
+    ];
+  }
+
+  if (kind === 'sevarthi') {
+    /* One row that names its day and carries money, one that does
+       neither — the two shapes an operator's own sheet arrives in. */
+    const dated = exampleSeva(true, null) || exampleSeva(false, null);
+    const plain = exampleSeva(false, dated && dated.name)
+               || exampleSeva(true, dated && dated.name);
+    const out = [];
+    if (dated) {
+      out.push(['Rasikbhai Patel', '9825110001', 'Ahmedabad', 'Gujarat', 'Sanand', s0, c0, '',
+        dated.name, dated.slot_date || '', '2100000', '500000', 'No',
+        '1000000', '500000', todayLocal(), '', 'Paid at the mandir']);
+    }
+    if (plain) {
+      out.push(['Devshi Rabari', '9825110002', 'Viramgam', 'Gujarat', '', s1, c1, '',
+        plain.name, plain.slot_date || '', '21000', '', 'No', '', '', '', '', '']);
+    }
+    /* No seva with room on it means there is no honest example to give.
+       Headings alone beat two rows guaranteed to come back as errors. */
+    return out;
+  }
+
+  if (kind === 'donations') {
+    const [dc0, dc1] = lookupValues('donation_category', 2);
+    return [
+      [todayLocal(), 'Hansaben Patel', '9825110006', dc0 || '', '11000', '', '', ''],
+      [todayLocal(), 'Ramesh Prajapati', '9825110008', dc1 || dc0 || '', '', '51 kg ghee', '', 'Given at the mandir'],
+    ];
+  }
+
+  if (kind === 'visits') {
+    return [
+      [inDays(9), '17:00', 'Rasikbhai Patel', '9825110001', 'Ahmedabad', '12, Temple Road', 'Griha shanti', 'requested', ''],
+      [inDays(12), '10:30', 'Devshi Rabari', '9825110002', 'Viramgam', '', 'New house', 'confirmed', 'Ring the day before'],
+    ];
+  }
+
+  return [];
+}
 
 const csvCell = (v) => {
   const s = String(v == null ? '' : v);
@@ -102,7 +197,7 @@ router.get('/template/:kind', (req, res) => {
   const spec = SPECS[req.params.kind];
   if (!spec) return res.status(404).json({ error: 'No such import type' });
   const lines = [spec.columns.map((c) => csvCell(c.label)).join(',')];
-  (EXAMPLES[req.params.kind] || []).forEach((r) => lines.push(r.map(csvCell).join(',')));
+  examples(req.params.kind).forEach((r) => lines.push(r.map(csvCell).join(',')));
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition',
     'attachment; filename="svmds-import-' + req.params.kind + '.csv"');

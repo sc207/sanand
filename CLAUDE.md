@@ -775,8 +775,29 @@ because "CSV" out of a Gujarati Windows locale can be semicolon- or tab-separate
 
 The template (`GET /api/import/template/:kind`) is a CSV with the **UTF-8 BOM** and two
 real example rows — a template full of "string, string, string" teaches nothing about what
-a date or an amount should look like. Its example data is checked by a test that imports
-the template into itself.
+a date or an amount should look like.
+
+**Those rows are read out of the database at download time, never written in the source.**
+They were hardcoded once and both sevarthi rows rotted where nobody could see it: `Bhagvat
+Saptah Katha` was a seva that does not exist, and `Mukhya Patlo` is a single seat somebody
+had already taken — so the template the app handed an operator failed its own check on
+every row of it, which is the first thing a new operator does and reads as the importer
+being broken. A name copied into a source file is right only until the trust edits a list;
+a name picked from the list is right by construction, and the same goes for the samaj and
+the category, because `create_lookups` is off by default and a stale one there is an error
+too. `exampleSeva()` in `routes/import.js` picks an **open seva with room**, preferring in
+order: nobody booked on it yet (or the row comes back "already present" instead of
+importing), then no seat limit at all (or it can fill up between the download and the
+upload), then the plainest name — it goes into a CSV cell an operator may retype, and
+`Yagna Patla — ₹11,000` carries a comma that has to survive quoting. Dates are `todayLocal()`
+and offsets from it rather than fixed days, for the same reason. **If there is no seva with
+room, the sevarthi template comes back as headings alone** — two rows guaranteed to fail
+are worse than none, and the format screen says why rather than leaving the operator to
+meet it as "the sheet has headings but no rows" on the next screen.
+
+The check that matters is importing each template into itself and getting zero errors; run
+it against a freshly seeded throwaway `TEMPLE_DB`, and against an empty one too, since the
+empty case is the one that used to throw.
 
 **Where dates are ambiguous they are read DAY FIRST** (`04/02/2027` is 4 February), which
 is what everyone here writes. The format screen and the column help both say so, and a
