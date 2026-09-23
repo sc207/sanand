@@ -1285,8 +1285,18 @@ th.n .dt-sort { flex-direction: row-reverse; }
 
 /* The rows also carry .row-item / .row-more so the app's shared
    disclosure machinery treats them like any other row; those classes
-   are styled for cards, so the card styling is undone here. */
-table.dt tr.row-item, table.dt tr.row-more { display: table-row; padding: 0; border-radius: 0; }
+   are styled for cards (.row-more is a flex column with padding), so
+   the card styling is undone here.
+
+   The `display` half is scoped to the table layout ON PURPOSE. Left
+   global it beat the stacking rules below — `tr.row-more` is the more
+   specific selector — so the panel stayed a table-row inside a
+   block-level table, shrank to fit its own text at 250px of a 384px
+   row, and the card's white showed down the side of it. */
+table.dt tr.row-item, table.dt tr.row-more { padding: 0; border-radius: 0; }
+@media (min-width: 861px) {
+  table.dt tr.row-item, table.dt tr.row-more { display: table-row; }
+}
 
 /* Actions hug the right edge and never wrap under the figures. */
 table.dt td.dt-act, table.dt th.dt-act { width: 1%; white-space: nowrap; text-align: right; }
@@ -1325,7 +1335,17 @@ table.dt td.dt-act, table.dt th.dt-act { width: 1%; white-space: nowrap; text-al
   table.dt td.dt-sm-hide { display: none; }
   table.dt td.dt-act { grid-column: 1 / -1; margin-top: .55rem; text-align: left; }
   .dt-act-in { width: 100%; justify-content: space-between; }
-  table.dt tbody tr.dt-more > td { padding: 0 1rem 1rem; }
+  /* The stacked row already prints Seva, Contributed and Outstanding
+     with their own headings, so repeating them in the panel directly
+     underneath made the disclosure look like it said nothing new.
+     Committed, Bapa's support, donations and padhramni — the ones the
+     row has no column for — stay. */
+  #devBody .dt-more .fig[data-fig="Seva"],
+  #devBody .dt-more .fig[data-fig="Contributed"],
+  #devBody .dt-more .fig[data-fig="Outstanding"] { display: none; }
+
+  table.dt tbody tr.dt-more { display: block; width: 100%; }
+  table.dt tbody tr.dt-more > td { display: block; width: 100%; padding: 0 1rem 1rem; }
 }
 
 /* ============================================================
@@ -1533,3 +1553,24 @@ body.drawer-open { overflow: hidden; }
   }
   .cal-more-chip .cmc-word { display: none; }
 }
+
+/* ============================================================
+   .icon-btn — defined here, because nothing else defines it
+   ------------------------------------------------------------
+   Twelve of these across forms.js, ui.js, the calendar, donations and
+   mahotsav, and the class existed ONLY in the unlinked app.css. So
+   every one of them was a bare <button> wearing the browser's own
+   grey `buttonface`. At 16px that read as a faint square nobody
+   questioned; the moment touch targets took it to 44px it became a
+   grey slab beside every row. The app.css trap, for the seventh time.
+   ============================================================ */
+.icon-btn {
+  border: 0; background: transparent; color: var(--muted-brown);
+  width: 32px; height: 32px; border-radius: 50%;
+  display: inline-grid; place-items: center; cursor: pointer;
+  padding: 0; line-height: 0;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.icon-btn:hover { background: var(--warm-ivory); color: var(--primary-maroon); }
+.icon-btn:focus-visible { outline: 2px solid var(--antique-gold); outline-offset: 2px; }
+.icon-btn[disabled] { opacity: .45; cursor: not-allowed; }

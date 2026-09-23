@@ -72,13 +72,29 @@
   /* ---------- shell events (delegated) ---------- */
   document.addEventListener('click', (e) => {
     const nav = e.target.closest('[data-page]');
-    if (nav) { e.preventDefault(); go(nav.getAttribute('data-page')); return; }
+    if (nav) {
+      e.preventDefault();
+      /* Close on the TAP, not only on the navigation: tapping the
+         section you are already on changes no hash, fires no
+         hashchange, and left the drawer sitting open over the page it
+         had just confirmed you were looking at. */
+      closeDrawer();
+      go(nav.getAttribute('data-page'));
+      return;
+    }
 
     const action = e.target.closest('[data-action]');
     if (action) {
       const name = action.getAttribute('data-action');
-      if (name === 'quick-add') Forms.quickAddMenu();
-      if (name === 'more') moreMenu();
+      if (name === 'quick-add') { closeDrawer(); Forms.quickAddMenu(); }
+      /* "More" opens the sidebar, not a second menu of its own.
+         There were two: the drawer behind the hamburger, and an "All
+         sections" sheet behind this button — different labels for the
+         same pages ("Padhramni" against "Bappa / Bhuvaji Padhramni"),
+         a different order, and the SAME hamburger glyph on both
+         buttons. Two menus is one too many, and the drawer is the one
+         that already matches the desktop and groups its sections. */
+      if (name === 'more') setDrawer(true);
       return;
     }
 
@@ -134,34 +150,6 @@
     Lang.setLang(Lang.lang() === 'gu' ? 'en' : 'gu');
   });
 
-  function moreMenu() {
-    const items = [
-      ['devotees', 'users', 'Devotee Register'],
-      ['visits', 'temple', 'Bappa / Bhuvaji Padhramni'],
-      ['calendar', 'calendar', 'Universal Calendar'],
-      ['donations', 'gift', 'Donation'],
-      ['invitation', 'mail', 'Invitation'],
-      ['settings', 'settings', 'Settings'],
-      ['accounts', 'shield', 'Accounts & Access'],
-    ];
-    UI.openSheet({
-      title: 'All sections',
-      body: `<div class="list">${items.map(([page, ic, label]) => `
-        <button class="row-item" data-goto="${UI.attr(page)}">
-          ${UI.icon(ic)}
-          <div class="row-main"><div class="row-title">${UI.esc(label)}</div></div>
-          ${UI.icon('chevron-right', 'ico-sm')}
-        </button>`).join('')}</div>`,
-      onMount(sheet) {
-        sheet.querySelectorAll('[data-goto]').forEach((b) => {
-          b.addEventListener('click', () => {
-            UI.closeSheet();
-            go(b.getAttribute('data-goto'));
-          });
-        });
-      },
-    });
-  }
 
   /* ---------- boot ---------- */
   function paintUser() {

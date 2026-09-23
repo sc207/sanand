@@ -26,7 +26,10 @@
     seva: (a, b) => (b.booking_count || 0) - (a.booking_count || 0) || a.full_name.localeCompare(b.full_name),
   };
 
-  const fig = (k, v, cls) => `<div class="fig ${cls || ''}">
+  /* `data-fig` names the figure so the stacked phone layout can drop
+     the ones the row above is already showing as columns — see
+     app-extras.css. The label is the name because it is the label. */
+  const fig = (k, v, cls) => `<div class="fig ${cls || ''}" data-fig="${attr(k)}">
     <span class="fig-k">${esc(k)}</span><span class="fig-v">${esc(v)}</span></div>`;
 
   const opt = (v, label, cur) =>

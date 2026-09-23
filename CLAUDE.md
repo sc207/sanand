@@ -252,6 +252,13 @@ Easy to get wrong, and it changes what a "day" means:
   sidebar/mobile-nav markup in `index.html` (and, if it belongs there, the `moreMenu()`
   list in `app.js`). `window.navigate(page, ...params)` and `window.refreshPage()` are
   the globals pages use to move around / re-render themselves after a mutation.
+  **There is ONE menu.** The sidebar is it, on every width — below 1200px as a drawer,
+  reached from the hamburger *and* from "More" in the bottom bar. There used to be two:
+  the drawer, and an "All sections" sheet behind More, with different labels for the same
+  pages ("Padhramni" against "Bappa / Bhuvaji Padhramni"), a different order, and the
+  **same hamburger glyph on both buttons** — so the app had two menus that disagreed and
+  no way to tell them apart. `moreMenu()` is gone; a new page goes in the sidebar markup
+  and nowhere else.
 - **Every entry sheet follows the same four rules, and the kit that enforces them
   lives in `ui.js`.** The trust's verdict on the first version was that entering things
   felt congested and hard, and the screenshots agreed: Add Seva asked its eight devotee
@@ -369,6 +376,14 @@ Easy to get wrong, and it changes what a "day" means:
   toggles the class, the `#sidebarScrim` and `body.drawer-open` together, and a
   `hashchange` listener closes it on *any* navigation — the drawer, the bottom bar, the
   More sheet or a card on the page.
+- **A rule that neutralises a class for the table layout has to be scoped to it.**
+  `.dt-row`/`.dt-more` also carry `.row-item`/`.row-more` so the shared disclosure
+  machinery works on them, and those are styled for cards — so the card styling is undone
+  in `app-extras.css`. The `display: table-row` half of that must sit inside
+  `@media (min-width: 861px)`: left global it beat the stacking rules, because
+  `table.dt tr.row-more` is the more specific selector, and the panel stayed a table-row
+  inside a block-level table — shrinking to fit its own text at 250px of a 384px row,
+  with the card's white showing down the side of it.
 - **A grid of seven columns needs about 900px before a named chip reads as a word.** The
   Universal Calendar's day chips were "Pad…", "1 pa…", "Don…" at phone and tablet-portrait
   widths — a month of truncated text that says nothing. Below 900px the chips become
@@ -593,6 +608,13 @@ Easy to get wrong, and it changes what a "day" means:
   it was **removed**, deliberately deleted rather than left unlinked — an unlinked
   stylesheet is exactly the `app.css` trap below. Only two sheets are linked:
   `styles.css` then `app-extras.css`.
+- **A class that renders as a plain grey button is almost certainly undefined.** A bare
+  `<button>` with no background rule shows the UA's own `buttonface` grey, which at 16px
+  reads as a faint square nobody questions — `.icon-btn`, used twelve times across
+  `forms.js`, `ui.js`, the calendar, donations and mahotsav, was defined only in the dead
+  `app.css` and had looked like that all along. It only became obvious when touch targets
+  took it to 44px and it turned into a grey slab beside every row. Now in
+  `app-extras.css`, like the seven before it.
 - `public/css/app.css` **exists on disk but is not linked from `index.html`.** It's a
   leftover, self-contained earlier design system (its own `--maroon` token set, its own
   `.stat`/`.stat-ico`/`.rail`/`.sheet`/`.topbar` classes) from before the app adopted
