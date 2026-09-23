@@ -88,7 +88,15 @@ const BOOKING_SELECT = `
             own date — a collections list has to show when the entry
             happened, not only which day the pooja falls on. */
          (SELECT MAX(payment_date) FROM payments WHERE booking_id = b.id) AS last_payment_date,
-         (SELECT COUNT(*) FROM payments WHERE booking_id = b.id)          AS payment_count
+         (SELECT COUNT(*) FROM payments WHERE booking_id = b.id)          AS payment_count,
+         /* Every receipt this seat has been given, oldest first. The
+            export carries them so a printed sheet can be checked
+            against the receipt book without opening each row; the
+            ledger is still where an individual entry is corrected. */
+         (SELECT GROUP_CONCAT(receipt_no, ' ') FROM (
+            SELECT receipt_no FROM payments
+             WHERE booking_id = b.id AND receipt_no IS NOT NULL AND TRIM(receipt_no) <> ''
+             ORDER BY created_at, id))                                     AS receipt_nos
     FROM sevarthi_bookings b
     JOIN pooja_slots  ps ON ps.id = b.slot_id
     JOIN pooja_events pe ON pe.id = ps.pooja_id

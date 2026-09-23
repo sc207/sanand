@@ -504,6 +504,16 @@ Easy to get wrong, and it changes what a "day" means:
   announced" shares that column and must), and it never applies to a *heading* — "Paid
   by devotee" is a phrase that has to wrap, and forcing it onto one line ran it into the
   next column.
+  **Check it in both directions.** `parity.js` asks "is every CSV column shown on
+  screen"; `exportgap.js` asks the reverse — what does the API hand the page that the
+  export never writes down. The second is the harder one to get right: matching field
+  NAMES against column LABELS does not work, because the labels are the trust's words
+  (`full_name` is "Sevarthi", `bappa_paid` is "Bapa's support"), so it matches by VALUE
+  against the CSV the page actually produced. Two traps it fell into first, both worth
+  keeping in mind for any check of this shape: a field that is null on every sampled row
+  was never put to the test and must be reported as unchecked rather than absent, and a
+  run that lined up no rows at all proves nothing — say so loudly instead of listing
+  every field as missing.
   **The export doubles as a specification of what the page must show.** A column that
   carries a value the screen never displays is a gap between what the app knows and what
   it tells the operator, and comparing the two found four: the devotee's note existed

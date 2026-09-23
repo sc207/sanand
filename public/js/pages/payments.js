@@ -183,6 +183,15 @@
     { key: 'name',     label: 'Sevarthi',     value: (b) => b.full_name },
     { key: 'mobile',   label: 'Mobile', nowrap: true, value: (b) => b.mobile || '' },
     { key: 'samaj',    label: 'Samaj',        value: (b) => b.samaj || '' },
+    /* The four the export had no column for. The page can now be
+       filtered by category, so a sheet that cannot say which category
+       a row belongs to cannot be checked against the filter that
+       produced it; city is how a collector plans a round; and the
+       booking's own note existed nowhere at all, on screen or on
+       paper. */
+    { key: 'catlabel', label: 'Mahotsav category', value: (b) => CAT_LABEL[b.category] || b.category || '' },
+    { key: 'city',     label: 'City',         value: (b) => b.city || '' },
+    { key: 'devcat',   label: 'Devotee category', print: false, value: (b) => b.category_name || '' },
     { key: 'pooja',    label: 'Seva',         value: (b) => b.pooja_name },
     /* UI.TBD, not a second phrase of its own: an undated pooja is the
        normal early state, and the export saying "Not fixed" where the
@@ -203,6 +212,11 @@
     { key: 'lastpaid', label: 'Last paid', print: false, type: 'date', value: (b) => b.last_payment_date || '' },
     { key: 'entries',  label: 'Payments', print: false, type: 'num', value: (b) => b.payment_count || 0 },
     { key: 'registered', label: 'Registered', print: false, type: 'date', value: (b) => String(b.created_at || '').slice(0, 10) },
+    /* Off the printed sheet: a seat paid in instalments carries several
+       numbers and would wrap the column into four lines. The
+       spreadsheet is where a reconciliation actually happens. */
+    { key: 'receipts', label: 'Receipt nos.', print: false, value: (b) => b.receipt_nos || '' },
+    { key: 'note',     label: 'Note', print: false, value: (b) => b.notes || '' },
   ];
 
   const STATUS_WORD = { pending: 'Pending', partially_paid: 'Part paid',
@@ -486,6 +500,15 @@
             detail: (b) => {
               const c = UI.coverage(b);
               return `
+              ${/* Every column the export writes has to have a home on
+                    the page — that rule is why this panel exists. These
+                    four had none: the category (now a filter), the
+                    city, the receipts and the booking's own note. */''}
+              <div class="collect-meta">
+                <span>${esc(CAT_LABEL[b.category] || b.category || '')}</span>
+                ${b.city ? `<span>${esc(b.city)}</span>` : ''}
+                ${b.category_name ? `<span>${esc(b.category_name)}</span>` : ''}
+              </div>
               <div class="collect-when">
                 ${icon('clock','ico-sm')}
                 <span>Registered ${esc(fmtDate(String(b.created_at || '').slice(0, 10)))}</span>
@@ -494,6 +517,11 @@
                     (b.payment_count > 1 ? ` · ${esc(num(b.payment_count))} entries` : '')
                   : 'No payment yet'}</span>
               </div>
+              ${b.receipt_nos ? `<div class="collect-meta">
+                ${icon('sheet','ico-sm')}<span>Receipts
+                <span class="rcpt">${esc(b.receipt_nos.split(' ').join(', '))}</span></span></div>` : ''}
+              ${b.notes ? `<div class="vis-line" style="margin-top:.1rem">
+                ${icon('edit','ico-sm')}<span>${esc(b.notes)}</span></div>` : ''}
               <div class="more-actions">
                 ${b.status !== 'cancelled' && c.outstanding > 0
                   ? `<button class="btn btn-outline mg-btn-xs" data-bapa="${attr(b.id)}">Bapa support</button>` : ''}
