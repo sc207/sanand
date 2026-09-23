@@ -62,22 +62,24 @@
     if (!UI.can('admin')) {
       host.innerHTML = `
         <div class="flex justify-between items-center mg-page-head"><div><h1 class="banner-title mg-page-title">Import from Excel</h1></div></div>
-        <div class="card mg-empty">
+        <div class="card"><div class="card-body mg-empty">
           ${icon('shield', 'ico-lg mg-empty-mandala')}
           <p>Importing a spreadsheet is kept for an administrator.</p>
           <p class="mg-muted-xs">It writes devotees, seva and money in one go, which is why it is
              held back. Everything you do at the counter is still yours — ask an administrator,
              or switch account from the name at the top right.</p>
-        </div>`;
+        </div></div>`;
       return;
     }
 
     if (!state.kinds.length) {
-      host.innerHTML = `<div class="card loading">${icon('clock', 'ico-lg')} Loading…</div>`;
+      host.innerHTML = `<div class="card"><div class="card-body loading">
+        ${icon('clock', 'ico-lg')} Loading…</div></div>`;
       try {
         state.kinds = await API.importKinds();
       } catch (e) {
-        host.innerHTML = `<div class="card mg-empty"><p>${esc(e.message)}</p></div>`;
+        host.innerHTML = `<div class="card"><div class="card-body mg-empty">
+          <p>${esc(e.message)}</p></div></div>`;
         return;
       }
     }
@@ -143,11 +145,12 @@
     const req = s.columns.filter((c) => c.required);
     return `
       <div class="card">
-        <div class="imp-head">
+        <div class="card-header imp-head">
           <h3 class="card-title">${esc(s.title)}</h3>
           <a class="btn btn-primary" href="${attr(API.importTemplateUrl(state.kind))}" download>
             ${icon('sheet', 'ico-sm')} Download the template</a>
         </div>
+        <div class="card-body">
         <p class="imp-lede">One row per ${state.kind === 'devotees' ? 'person'
           : state.kind === 'sevarthi' ? 'seva taken'
           : state.kind === 'donations' ? 'donation' : 'visit'}, with the headings below in the
@@ -176,10 +179,12 @@
 
         ${state.kind === 'sevarthi' ? sevaHelp() : ''}
         ${state.kind === 'sevarthi' ? giftHelp() : ''}
+        </div>
       </div>
 
       <div class="card">
-        <h3 class="card-title">Choose the file</h3>
+        <div class="card-header"><h3 class="card-title">Choose the file</h3></div>
+        <div class="card-body">
         <label class="imp-drop" id="impDrop">
           <input type="file" id="impFile" accept=".xlsx,.csv,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
           ${icon('upload', 'ico-lg')}
@@ -191,6 +196,7 @@
           <button type="button" class="btn btn-outline" data-back>Back</button>
           <button type="button" class="btn btn-primary" id="impCheck" ${state.file ? '' : 'disabled'}>
             ${state.busy ? 'Reading…' : 'Check the file'}</button>
+        </div>
         </div>
       </div>`;
   };
@@ -204,7 +210,7 @@
     const rows = open.map((p) => `
       <tr><td data-k="Seva">${esc(p.name)}</td>
           <td data-k="Days">${p.days ? esc(p.days) : '<span class="mg-muted-xs">no date fixed — leave the date blank</span>'}</td></tr>`).join('');
-    return UI.moreFields(`The ${open.length} seva names the Seva column accepts`, `
+    return UI.moreFields('The seva names the Seva column accepts', `
       <p class="mg-muted-xs">Write the name exactly as it appears here. Where a seva runs on
          several days, the Seva date column must name one of them.</p>
       <div class="dt-wrap imp-seva-wrap"><table class="custom-table dt imp-seva">
@@ -276,14 +282,14 @@
     if (!r) return '';
     if (r.fatal) {
       return `
-        <div class="card">
+        <div class="card"><div class="card-body">
           <div class="imp-error">${icon('alert', 'ico-sm')} ${esc(r.fatal)}</div>
           <div class="form-actions">
             <button type="button" class="btn btn-outline" data-back>Pick another file</button>
             <a class="btn btn-primary" href="${attr(API.importTemplateUrl(state.kind))}" download>
               ${icon('sheet', 'ico-sm')} Download the template</a>
           </div>
-        </div>`;
+        </div></div>`;
     }
 
     const c = r.counts || {};
@@ -294,12 +300,13 @@
        of a figure above its name. Every other figure in the app wraps
        them; this one did not, and it showed up the moment the cells
        were narrow enough to matter. */
-    const fig = (k, v, cls) => `
+    const fig = (k, v, iconName, tone, cls) => `
       <div class="stat-card ${cls || ''}">
         <div class="stat-card-info">
           <span class="stat-card-title">${esc(k)}</span>
           <span class="stat-card-value">${esc(String(v))}</span>
         </div>
+        <div class="stat-card-icon-wrapper ${attr(tone)}">${icon(iconName)}</div>
       </div>`;
 
     const newLk = Object.entries(r.newLookups || {}).filter(([, v]) => v.length);
@@ -307,16 +314,20 @@
       ? r.columns.unknown : [];
 
     return `
-      <div class="card">
-        <h3 class="card-title">${esc(state.file ? state.file.name : 'The file')} — what will happen</h3>
-        <div class="stats-grid imp-figs">
-          ${fig('Rows read', r.total)}
-          ${fig('To be added', c.create || 0)}
-          ${fig('To be updated', c.update || 0)}
-          ${fig('Already there', c.skip || 0)}
-          ${fig('To fix', bad, bad ? 'is-bad' : '')}
-        </div>
+      <div class="imp-filebar">
+        ${icon('sheet', 'ico-sm')}
+        <strong>${esc(state.file ? state.file.name : 'The file')}</strong>
+        <span class="mg-muted-xs">read and checked — nothing has been saved yet</span>
+      </div>
+      <div class="stats-grid imp-figs">
+        ${fig('Rows read', r.total, 'sheet', 'icon-devotees-bg')}
+        ${fig('To be added', c.create || 0, 'plus', 'icon-diya-bg')}
+        ${fig('To be updated', c.update || 0, 'edit', 'icon-donation-bg')}
+        ${fig('Already there', c.skip || 0, 'check', 'icon-devotees-bg')}
+        ${fig('To fix', bad, 'alert', 'icon-events-bg', bad ? 'is-bad' : '')}
+      </div>
 
+      <div class="card"><div class="card-body">
         ${bad ? `<div class="imp-error">
             ${icon('alert', 'ico-sm')}
             <span><strong>${bad} row${bad === 1 ? '' : 's'} need${bad === 1 ? 's' : ''} fixing.</strong>
@@ -357,7 +368,7 @@
             ${state.busy ? 'Importing…' : `Import ${(c.create || 0) + (c.update || 0)} row${((c.create || 0) + (c.update || 0)) === 1 ? '' : 's'}`}
           </button>
         </div>
-      </div>`;
+      </div></div>`;
   };
 
   /* The preview table leads with the line number, because the only
@@ -447,7 +458,7 @@
     const c = res.counts || {};
     const line = (k, v) => v ? `<li><strong>${esc(String(v))}</strong> ${esc(k)}</li>` : '';
     return `
-      <div class="card imp-done">
+      <div class="card imp-done"><div class="card-body">
         <div class="imp-ok">${icon('check', 'ico-lg')}
           <span><strong>Imported.</strong> ${esc(res.summary || '')}</span></div>
         <ul class="imp-tally">
@@ -468,7 +479,7 @@
           <button type="button" class="btn btn-primary" data-page="${attr(WENT[res.kind] || 'dashboard')}">
             See the ${esc(WENT[res.kind] || 'dashboard')}</button>
         </div>
-      </div>`;
+      </div></div>`;
   };
 
   BIND[3] = (host) => {

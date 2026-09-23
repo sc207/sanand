@@ -84,6 +84,12 @@ const EXAMPLES = {
   ],
 };
 
+/* The done screen prints this summary above a tally the client has
+   already formatted, so a bare 1551000 sat one line above ₹15,51,000
+   and read as two different figures. Lakhs grouping, as misc.js does
+   it and as UI.money does it on every other screen. */
+const rupees = (n) => '₹' + Number(n || 0).toLocaleString('en-IN');
+
 const csvCell = (v) => {
   const s = String(v == null ? '' : v);
   /* The same guard the exports use: a cell starting with one of these
@@ -296,7 +302,7 @@ const WRITE = {
     }
     return {
       counts: { devotees: devoteesNew, seats, payments, skipped, money },
-      summary: seats + ' seva, ' + devoteesNew + ' new devotees, ₹' + money + ' recorded' +
+      summary: seats + ' seva, ' + devoteesNew + ' new devotees, ' + rupees(money) + ' recorded' +
                (skipped ? ', ' + skipped + ' already present' : ''),
     };
   },
@@ -334,7 +340,7 @@ const WRITE = {
         details: { via: 'import', line: row.line },
       });
     }
-    return { counts: { donations: n, money }, summary: n + ' donations, ₹' + money };
+    return { counts: { donations: n, money }, summary: n + ' donations, ' + rupees(money) };
   },
 
   visits(req, report, opts, by) {

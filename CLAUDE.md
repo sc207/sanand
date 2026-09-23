@@ -818,6 +818,28 @@ the specificity contest and the labels come back *underneath a visible header ro
   it was **removed**, deliberately deleted rather than left unlinked — an unlinked
   stylesheet is exactly the `app.css` trap below. Only two sheets are linked:
   `styles.css` then `app-extras.css`.
+- **`.card` has no padding of its own — it lives on `.card-header` and `.card-body`.**
+  A `<div class="card">` with content dropped straight into it renders that content flush
+  against the card's own border, and nothing about it looks like a mistake in isolation:
+  the card is still a card, the text is still readable, it is simply hard against the
+  edge. The whole Import page was built that way and shipped like it — the title at the
+  card's left edge, the format table bleeding out both sides, the download button
+  overhanging the top-right corner, the buttons in the bottom-left one. **Every card gets
+  `<div class="card-header">` (title, plus an action at the right: it is already a
+  `space-between` flex) and `<div class="card-body">`**, the way every other page does it;
+  `style="padding:0"` on the body is the documented opt-out for a list card.
+  Related, and the same shape of mistake: **`.stats-grid` is a panel, not a grid** — it
+  brings its own background, border, radius and shadow, so it sits on the page, never
+  inside a card. Nested in one it draws a second border a pixel inside the first and reads
+  as a broken table, which is how the import check screen looked. And a figure tile in it
+  **keeps its `.stat-card-icon-wrapper` disc** (or `.stat-ico`); the import strip was the
+  one place in the app that left it off.
+- **A disabled button has to look disabled.** `styles.css` styles no disabled state for
+  `.btn` at all, so `disabled` set the attribute and changed nothing on screen — "Check
+  the file" with no file picked and "Import 0 rows" on a sheet full of errors both
+  rendered as solid maroon invitations. This is the `[hidden]` story again, down to being
+  patched twice locally (`.pager .btn`, `.icon-btn`) before being said once for every
+  button in `app-extras.css`. A control that refuses a press must say so before the press.
 - **A class that renders as a plain grey button is almost certainly undefined.** A bare
   `<button>` with no background rule shows the UA's own `buttonface` grey, which at 16px
   reads as a faint square nobody questions — `.icon-btn`, used twelve times across

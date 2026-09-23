@@ -410,6 +410,20 @@ dialog#sheet::backdrop { background: transparent; }
 }
 .btn-danger:hover { background: #9E3E37; border-color: #9E3E37; color: #FFFFFF; }
 
+/* A disabled button that looks enabled is the same failure as the one
+   above, pointing the other way: the theme styles no disabled state at
+   all, so "Check the file" with no file picked and "Import 0 rows" on a
+   sheet full of errors both rendered as solid maroon invitations that
+   do nothing when pressed. Two places had already patched this for
+   themselves (.pager .btn, .icon-btn); this says it once for every
+   button, and those two keep working because they say the same thing. */
+.btn[disabled], .btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.btn[disabled]:hover, .btn:disabled:hover { transform: none; box-shadow: none; }
+
 /* Two fields side by side — used for the start/end date pair in the
    pooja form, which was stacking instead. */
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: .85rem; }
@@ -1689,7 +1703,12 @@ body.drawer-open { overflow: hidden; }
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 .imp-kind {
+  /* Four blurbs of different lengths left the "8 columns · 2 required"
+     line at four different heights, so a row of cards read as ragged.
+     The blurb takes the slack instead and the count sits on the floor
+     of every card. */
   display: grid; gap: 6px; text-align: left; cursor: pointer;
+  grid-template-rows: auto auto 1fr auto;
   padding: 18px; border: 1px solid var(--warm-border); border-radius: var(--radius-md);
   background: var(--ivory-card); color: inherit; font: inherit;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast),
@@ -1703,10 +1722,15 @@ body.drawer-open { overflow: hidden; }
 .imp-kind-n { font-size: .76rem; color: var(--muted-brown); opacity: .8; }
 
 /* ---- 2. the format ---- */
-.imp-head {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
-}
+/* Every card on this page wears .card-header + .card-body, like every
+   other page, because that is where this theme keeps card padding —
+   `.card` itself has none. The import page was built out of bare
+   `<div class="card">` with the content dropped straight in, so the
+   title, the tables and the buttons all sat flush against the card's
+   own border, and the download button overhung its top-right corner.
+   Nothing here is a fix for that; the markup is. This only adds what
+   .card-header does not do: let the button wrap under a long title. */
+.imp-head { gap: 12px; flex-wrap: wrap; }
 /* The step's job is to show the columns and take the file. Its heading
    block had grown to a two-line Cinzel title, a full-width button, a
    four-line paragraph and a notice — on a phone the whole screen went
@@ -1749,18 +1773,51 @@ body.drawer-open { overflow: hidden; }
 }
 .imp-drop:hover, .imp-drop.is-over { border-color: var(--primary-maroon); background: var(--gold-bg); }
 .imp-drop .ico { color: var(--primary-maroon); }
-.imp-drop-t { font-family: var(--font-heading); color: var(--primary-maroon); word-break: break-all; }
+/* Two traps in one line, both already documented elsewhere in this
+   sheet. --font-heading is Cinzel, which renders lowercase as small
+   caps — right for a figure, wrong for a sentence, the same call the
+   padhramni lead got. And `word-break: break-all` breaks inside any
+   word, not just one too long to fit, so at 390px the prompt read
+   "CLICK TO PI / CK ONE"; `overflow-wrap: anywhere` breaks a long
+   filename and leaves ordinary words alone. */
+.imp-drop-t {
+  font-family: var(--font-body); font-weight: 600;
+  color: var(--primary-maroon); overflow-wrap: anywhere;
+}
 .imp-drop-s { font-size: .8rem; color: var(--muted-brown); }
 
 /* ---- 3. check ---- */
+/* The file being checked, named above its own figures. */
+.imp-filebar {
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  margin-bottom: .9rem; color: var(--dark-brown); font-size: .92rem;
+}
+.imp-filebar .ico { color: var(--primary-maroon); flex: 0 0 auto; }
+.imp-filebar strong { word-break: break-all; }
+
 /* No grid override here on purpose. app-extras already styles a stats
    grid of EXACTLY five tiles (the :has(> :nth-child(5)) rule above, which
    the dashboard uses) and does it at higher specificity, so a plain
    .imp-figs rule both loses and fights a deliberate house treatment.
-   Five figures here therefore lay out exactly as the dashboard's five do. */
-.imp-figs { margin-bottom: 14px; }
-.imp-figs .stat-card.is-bad { border-color: var(--danger); }
+   Five figures here therefore lay out exactly as the dashboard's five do.
+
+   .stats-grid brings its own background, border, radius and shadow — it
+   is a panel, not a plain grid — so it belongs on the page, the way the
+   dashboard and every list page place it. Nested inside a .card it drew
+   a second border a pixel inside the first and read as a broken table. */
+.imp-figs { margin-bottom: 1.25rem; }
+/* The strip strips its children of their borders (`.stats-grid > *`),
+   so a red border on the bad tile drew nothing. The disc carries the
+   alarm instead, which is what the eye goes to anyway. */
 .imp-figs .stat-card.is-bad .stat-card-value { color: var(--danger); }
+.imp-figs .stat-card.is-bad .stat-card-icon-wrapper {
+  background: var(--danger-bg); color: var(--danger);
+}
+
+/* .form-actions is tuned for a row of fields above it, each carrying
+   its own margin. Here it follows a table, a drop zone or a banner,
+   none of which do, so it needs the gap itself. */
+#impBody .form-actions { margin-top: 1.1rem; }
 
 .imp-opts { display: grid; gap: 10px; margin: 0 0 16px; }
 .imp-check {
@@ -1796,6 +1853,15 @@ body.drawer-open { overflow: hidden; }
   .imp-head .btn { width: 100%; justify-content: center; }
   .imp-drop { padding: 24px 14px; }
   .imp-rows td.n, .imp-cols td.n { width: auto; }
+}
+
+/* Two 160px buttons and a gap need 329px; the card body offers ~320 at
+   this width, so they wrapped to one each and sat at 160px in a
+   320px row, looking like they had failed to lay out. Once they stack
+   they take the row. */
+@media (max-width: 560px) {
+  #impBody .form-actions { flex-direction: column; align-items: stretch; }
+  #impBody .form-actions .btn { width: 100%; justify-content: center; }
 }
 
 /* ---- the format table is not a data table, and must not stack like one ----
