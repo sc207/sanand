@@ -1,6 +1,7 @@
 /* Dashboard, Universal Calendar, Settings, Accounts & Access, Audit log. */
 const express = require('express');
 const db = require('../db');
+const roles = require('../middleware/roles');
 const { log } = require('../middleware/audit');
 const { CATEGORIES } = require('./poojas');
 const { todayLocal, monthLocal } = require('../util/dates');
@@ -243,7 +244,7 @@ router.get('/users', (req, res) => {
   res.json(db.prepare(`SELECT * FROM users ORDER BY active DESC, name`).all());
 });
 
-router.post('/users', (req, res) => {
+router.post('/users', roles.needs('admin', 'Adding an account'), (req, res) => {
   const name = String(req.body.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Name is required' });
   const info = db.prepare(`INSERT INTO users (name, mobile, email, role) VALUES (?, ?, ?, ?)`)
@@ -253,7 +254,7 @@ router.post('/users', (req, res) => {
   res.status(201).json(row);
 });
 
-router.put('/users/:id', (req, res) => {
+router.put('/users/:id', roles.needs('admin', 'Changing an account'), (req, res) => {
   const row = db.prepare(`SELECT * FROM users WHERE id = ?`).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   const b = req.body;

@@ -128,10 +128,13 @@
             on ${esc(String(d.created_at || '').slice(0, 10))}</span></div>
       </div>
       <div class="more-actions">
-        <button class="btn btn-outline mg-btn-xs" data-edit="${attr(d.id)}">
+        ${/* Correcting or removing a donation rewrites what the trust
+              holds rather than adding to it, so it is kept for the
+              accountant and above — the same rule as a payment. */''}
+        ${UI.can('accountant') ? `        <button class="btn btn-outline mg-btn-xs" data-edit="${attr(d.id)}">
           ${icon('edit','ico-sm')} Edit donation</button>
         <button class="btn btn-outline mg-btn-xs btn-danger" data-del="${attr(d.id)}">
-          ${icon('trash','ico-sm')} Delete</button>
+          ${icon('trash','ico-sm')} Delete</button>` : ''}
       </div>`;
 
     return UI.expandableRow(summary, detail,

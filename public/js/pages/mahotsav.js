@@ -134,7 +134,10 @@
             <h1 class="banner-title mg-page-title">${esc(CAT_LABEL[category])}</h1>
             <p class="mg-page-sub">${poojas.length} pooja${poojas.length === 1 ? '' : 's'} in this seva</p>
           </div>
-          <button class="btn btn-primary mg-btn-xs" data-new-pooja>${icon('plus','ico-sm')} New</button>
+          ${/* The seva list is the shape of the Mahotsav; adding to it,
+                re-dating it or re-pricing it is administrator work, and
+                the server refuses it for anyone else. */''}
+          ${UI.can('admin') ? `<button class="btn btn-primary mg-btn-xs" data-new-pooja>${icon('plus','ico-sm')} New</button>` : ''}
         </div>
 
         <div class="sort-row">
@@ -162,7 +165,8 @@
           : UI.empty('No pooja added yet', 'Add the first one to start taking sevarthi.', 'temple')}`;
 
       bindCrumbs(host);
-      host.querySelector('[data-new-pooja]').addEventListener('click', () => poojaForm(category));
+      const newPooja = host.querySelector('[data-new-pooja]');
+      if (newPooja) newPooja.addEventListener('click', () => poojaForm(category));
       host.querySelectorAll('[data-sort]').forEach((b) =>
         b.addEventListener('click', () => { catSort.dir = b.getAttribute('data-sort'); paint(); }));
       host.querySelectorAll('[data-pooja]').forEach((el) =>
@@ -190,7 +194,7 @@
           <p class="mg-page-sub">${esc(fmtRange(p.start_date, p.end_date))}${p.amount ? ' · ' + esc(money(p.amount)) + ' per sevarthi' : ''}</p>
         </div>
         <div style="display:flex;gap:.4rem">
-          <button class="btn btn-outline mg-btn-xs" data-edit-pooja>${icon('edit','ico-sm')} Edit</button>
+          ${UI.can('admin') ? `<button class="btn btn-outline mg-btn-xs" data-edit-pooja>${icon('edit','ico-sm')} Edit</button>` : ''}
           <button class="btn btn-primary mg-btn-xs" data-add-sevarthi>${icon('plus','ico-sm')} Seva</button>
         </div>
       </div>
@@ -310,7 +314,8 @@
     UI.bindPager(host, (d) => { ledgerPage = ledgerPg.page + d; renderPooja(host, id); });
 
     bindCrumbs(host);
-    host.querySelector('[data-edit-pooja]').addEventListener('click', () => poojaForm(p.category, p));
+    const editPooja = host.querySelector('[data-edit-pooja]');
+    if (editPooja) editPooja.addEventListener('click', () => poojaForm(p.category, p));
     host.querySelector('[data-add-sevarthi]').addEventListener('click', () =>
       Forms.addSevarthi({ category: p.category, poojaId: p.id }));
     host.querySelectorAll('[data-pay]').forEach((b) =>

@@ -163,11 +163,49 @@ return `devotee_paid` and `bappa_paid`.
 
 Every create/update/delete/cancel/payment route calls `log(req, {...})` from
 `middleware/audit.js`, which writes an `audit_log` row using the acting user's name from
-the `X-User-Name` request header. There is **no real authentication** — that header is
-set client-side from whichever operator is picked in the "signed in as" switcher
-(`Forms.switchUser`, persisted in `localStorage`). Roles (`superadmin` / `admin` /
-`accountant` / `operator`) exist on `users` but nothing enforces them. Keep it that way
-unless explicitly asked — don't bolt on an auth system as a side effect of other work.
+the `X-User-Name` request header.
+
+**There is still no authentication, and the roles are a guard rail rather than security.**
+That header is set client-side from whichever operator is picked in the "signed in as"
+switcher (`Forms.switchUser`, persisted in `localStorage`), so anyone who can reach the
+app can claim to be anyone. `middleware/roles.js` says so at the top, and any change here
+must keep saying it: the rail stops an operator deleting a payment by accident on a busy
+counter; it does not stop somebody who means to.
+
+The trust's plan is Google Sign-In once the app is deployed with a real database — the
+upstream portal (`sc207/svmds`, `_legacy/login.html`) already works that way, with an
+administrator registering a Google account by email and no password. **That cannot be
+ported while the app has to run offline**: `accounts.google.com/gsi/client` and the token
+exchange at `POST /api/auth/google` both need the internet, and at the mandir with no
+connection nobody could sign in at all — worse than no login. When it does land,
+`middleware/roles.js` is where it plugs in and the route declarations do not change.
+
+**What the roles guard** (`roles.needs(min, what)` — ranked
+`operator < accountant < admin < superadmin`), chosen deliberately narrow so an operator
+keeps every part of the daily job:
+
+| Guarded | Kept for | Why |
+|---|---|---|
+| `PUT`/`DELETE /api/payments/:id`, `PUT`/`DELETE /api/donations/:id` | accountant+ | Correcting or removing money already recorded rewrites what the trust holds, rather than adding to it |
+| `POST`/`PUT`/`DELETE /api/poojas/*` (including dates and slot seats) | admin+ | The seva list is the shape of the Mahotsav |
+| `POST`/`PUT /api/users` | admin+ | Who has an account |
+
+Registering a sevarthi, taking a payment, raising a commitment, changing seva, recording
+a padhramni or a donation are all **open to an operator** and must stay that way.
+
+Two rules for adding to this:
+  - **A refusal names what to do instead.** A bare "not allowed" leaves someone stuck at
+    a counter with a devotee waiting.
+  - **Hide it client-side as well** (`UI.can(min)`, the mirror of the same ranks). Being
+    offered a button that bounces is worse than never seeing it. The server is still what
+    refuses — `UI.can` is only there so nobody meets that refusal.
+  - An unknown name resolves to `operator`, the least it could be, rather than to nobody,
+    so a fresh install with no `users` row still runs the daily job.
+
+Do not name a middleware factory `require`: a function declaration by that name shadows
+Node's own `require` for the whole module, and the requires at the top of `roles.js`
+silently called the middleware instead, failing everything with
+`userOf is not a function`.
 
 #### API surface
 

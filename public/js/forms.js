@@ -1757,12 +1757,17 @@
                         · by ${esc(p.recorded_by || '—')}</div>
                       ${p.notes ? `<div class="row-sub">${esc(p.notes)}</div>` : ''}
                     </div>
-                    <div class="row-actions">
+                    ${/* Correcting or removing money already recorded is kept
+                          for the accountant and above. The server refuses it
+                          either way; not offering the button means nobody
+                          meets that refusal at a counter with someone
+                          waiting. */''}
+                    ${UI.can('accountant') ? `<div class="row-actions">
                       <button class="icon-btn" data-pedit="${attr(p.id)}" title="Correct this entry"
                               style="color:var(--ink-soft)">${icon('edit','ico-sm')}</button>
                       <button class="icon-btn" data-pdel="${attr(p.id)}" title="Remove this entry"
                               style="color:var(--ink-soft)">${icon('trash','ico-sm')}</button>
-                    </div>
+                    </div>` : ''}
                   </div>`).join('')}
               </div></div></div>` : `<p class="small muted">Nothing received against this seva yet.</p>`}
 

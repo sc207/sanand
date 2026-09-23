@@ -2,6 +2,7 @@
    poojas inside them, and the per-day seating (patla) slots. */
 const express = require('express');
 const db = require('../db');
+const roles = require('../middleware/roles');
 const { slotWhen } = require('../util/dates');
 const { log } = require('../middleware/audit');
 
@@ -190,7 +191,7 @@ function datesBetween(start, end) {
   return out;
 }
 
-router.post('/', (req, res) => {
+router.post('/', roles.needs('admin', 'Adding a seva'), (req, res) => {
   const b = req.body;
   const name = String(b.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Pooja name is required' });
@@ -275,7 +276,7 @@ router.post('/', (req, res) => {
     Shortening a range that still has people booked on the days being
     dropped is refused, naming those days, rather than silently
     stranding or deleting their bookings. */
-router.put('/:id/dates', (req, res) => {
+router.put('/:id/dates', roles.needs('admin', 'Changing a seva\'s dates'), (req, res) => {
   const p = db.prepare(`SELECT * FROM pooja_events WHERE id = ?`).get(req.params.id);
   if (!p) return res.status(404).json({ error: 'Pooja not found' });
 
@@ -343,7 +344,7 @@ router.put('/:id/dates', (req, res) => {
 /** Clear the dates again — back to "not decided yet". Bookings survive:
     every slot is pooled back into the single undated placeholder, which
     is the state a pooja starts in before the trust fixes a day. */
-router.put('/:id/dates/clear', (req, res) => {
+router.put('/:id/dates/clear', roles.needs('admin', 'Clearing a seva\'s dates'), (req, res) => {
   const p = db.prepare(`SELECT * FROM pooja_events WHERE id = ?`).get(req.params.id);
   if (!p) return res.status(404).json({ error: 'Pooja not found' });
 
@@ -374,7 +375,7 @@ router.put('/:id/dates/clear', (req, res) => {
 });
 
 /** Adjust one day's patla count (e.g. more mats arrived). Never below what is booked. */
-router.put('/slots/:slotId', (req, res) => {
+router.put('/slots/:slotId', roles.needs('admin', 'Changing a day\'s seats'), (req, res) => {
   const slot = db.prepare(`SELECT * FROM pooja_slots WHERE id = ?`).get(req.params.slotId);
   if (!slot) return res.status(404).json({ error: 'Slot not found' });
 
@@ -393,7 +394,7 @@ router.put('/slots/:slotId', (req, res) => {
   res.json(db.prepare(`SELECT * FROM pooja_slots WHERE id = ?`).get(slot.id));
 });
 
-router.put('/:id', (req, res) => {
+router.put('/:id', roles.needs('admin', 'Editing a seva'), (req, res) => {
   const row = db.prepare(`SELECT * FROM pooja_events WHERE id = ?`).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Pooja not found' });
   const b = req.body;
@@ -500,7 +501,7 @@ router.put('/:id', (req, res) => {
 /** Remove a pooja added by mistake. Only while nothing is booked
     against it — a seva with sevarthi on it is history, not a typo, and
     deleting it would take their payments with it. Close it instead. */
-router.delete('/:id', (req, res) => {
+router.delete('/:id', roles.needs('admin', 'Deleting a seva'), (req, res) => {
   const row = db.prepare(`SELECT * FROM pooja_events WHERE id = ?`).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Pooja not found' });
 

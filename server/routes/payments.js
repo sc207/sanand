@@ -4,6 +4,7 @@
    its payment rows, so "pending → paid" is derived, never hand-set. */
 const express = require('express');
 const db = require('../db');
+const roles = require('../middleware/roles');
 const { log } = require('../middleware/audit');
 const { refreshStatus } = require('./bookings');
 const { todayLocal, monthLocal, slotWhen } = require('../util/dates');
@@ -172,7 +173,7 @@ router.post('/', (req, res) => {
     mistake, has to be able to fix it. Every change is audited with the
     before/after, and the booking status is recomputed from the ledger
     afterwards exactly as it is for a new payment. */
-router.put('/:id', (req, res) => {
+router.put('/:id', roles.needs('accountant', 'Correcting a payment'), (req, res) => {
   const p = db.prepare(`SELECT * FROM payments WHERE id = ?`).get(req.params.id);
   if (!p) return res.status(404).json({ error: 'Payment not found' });
   const b = req.body;
@@ -218,7 +219,7 @@ router.put('/:id', (req, res) => {
   res.json({ payment: row, booking_status: updated ? updated.status : null });
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', roles.needs('accountant', 'Removing a payment'), (req, res) => {
   const p = db.prepare(`SELECT * FROM payments WHERE id = ?`).get(req.params.id);
   if (!p) return res.status(404).json({ error: 'Payment not found' });
   db.prepare(`DELETE FROM payments WHERE id = ?`).run(p.id);

@@ -2,6 +2,7 @@
    from the same lookup table, so "add new category" works inline. */
 const express = require('express');
 const db = require('../db');
+const roles = require('../middleware/roles');
 const receipts = require('../util/receipts');
 const { log } = require('../middleware/audit');
 const { upsertDevotee } = require('./devotees');
@@ -87,7 +88,7 @@ router.post('/', (req, res) => {
 /** Correct a donation that was entered wrong — the whole row, because a
     mistyped amount, donor or date is exactly what needs fixing and
     delete-and-retype loses the receipt number and the audit trail. */
-router.put('/:id', (req, res) => {
+router.put('/:id', roles.needs('accountant', 'Correcting a donation'), (req, res) => {
   const row = db.prepare(`SELECT * FROM donations WHERE id = ?`).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   const b = req.body;
@@ -127,7 +128,7 @@ router.put('/:id', (req, res) => {
   res.json(updated);
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', roles.needs('accountant', 'Removing a donation'), (req, res) => {
   const row = db.prepare(`SELECT * FROM donations WHERE id = ?`).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Not found' });
   db.prepare(`DELETE FROM donations WHERE id = ?`).run(row.id);

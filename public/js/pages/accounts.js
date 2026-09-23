@@ -16,7 +16,8 @@
           <h1 class="banner-title mg-page-title">Accounts &amp; Access</h1>
           <p class="mg-page-sub">Who works in the app, and everything they have done</p>
         </div>
-        <button class="btn btn-primary mg-btn-xs" data-add>${icon('plus','ico-sm')} User</button>
+        ${/* Who has an account is administrator work. */''}
+        ${UI.can('admin') ? `<button class="btn btn-primary mg-btn-xs" data-add>${icon('plus','ico-sm')} User</button>` : ''}
       </div>
 
       <div class="card">
@@ -48,7 +49,8 @@
 
     paintAudit(audit);
 
-    host.querySelector('[data-add]').addEventListener('click', () => userForm());
+    const addUser = host.querySelector('[data-add]');
+    if (addUser) addUser.addEventListener('click', () => userForm());
     host.querySelectorAll('[data-user]').forEach((b) =>
       b.addEventListener('click', () => {
         const u = users.find((x) => String(x.id) === b.getAttribute('data-user'));

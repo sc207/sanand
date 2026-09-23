@@ -155,6 +155,22 @@
     return { days, label: `${-days} days ago`, tone: 'past' };
   }
 
+  /* ---------- who may do what ----------
+     The mirror of server/middleware/roles.js, and only a mirror: the
+     server is what actually refuses. This exists so an operator is not
+     offered a button that will bounce — meeting a refusal at a counter
+     with somebody waiting is worse than never seeing the control.
+
+     Ranked, not a set, so a check reads as "at least an accountant"
+     and a new tier slots in without revisiting every call site. */
+  const ROLE_RANK = { operator: 0, accountant: 1, admin: 2, superadmin: 3 };
+
+  /** The signed-in operator is at least `min`. */
+  function can(min) {
+    const me = (global.API && API.currentUser && API.currentUser()) || {};
+    return (ROLE_RANK[me.role] || 0) >= (ROLE_RANK[min] || 0);
+  }
+
   /* ---------- expandable rows ----------
      A list row answers the one question its page exists for; anything
      an operator only needs *after* choosing that row lives in a panel
@@ -878,6 +894,7 @@
     mobileError, coverage, coverageBadges, ago, whenDay,
     PAGE_SIZE, paginate, pager, bindPager,
     expandableRow, bindExpanders, dataTable, bindDataTable,
+    can, ROLE_RANK,
     steps, bindSteps, moreFields, contextCard, sheetFooter, bindEnterFlow,
     toast, openSheet, closeSheet, confirmSheet,
     debounce, readForm, showFieldError, clearFieldErrors,
