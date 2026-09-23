@@ -9,9 +9,39 @@ npm install                  # once
 npm start                    # run the server — http://localhost:3000
 npm run dev                  # same, but restarts on file changes (node --watch)
 npm run seed                 # seeds the real Mahotsav seva list (idempotent, safe to re-run)
+npm run seed:demo            # ten devotees / seats / payments / donations / padhramni
+npm run reset                # clear the entered data; keep seva, samaj and the categories
+npm run reset -- --lists     # …and put those lists back to exactly what the seed creates
 node server/seed-dummy.js    # NOT an npm script: dummy sevarthi/payments for testing.
                              # NOT idempotent — running it twice duplicates everything.
 ```
+
+**The clean-start sequence is `npm run reset -- --lists && npm run seed && npm run
+seed:demo`.** Reset clears everything the trust enters (devotees, bookings, payments,
+donations, padhramni, the audit log, the receipt counters), keeps the reference data, and
+takes a timestamped backup first, every time. Two things it does that are easy to forget
+by hand and wrong to leave out: `pooja_slots.booked_count` goes back to 0 — it is a
+running count, not derived, so clearing the bookings without it leaves every day claiming
+to be full — and the receipt counters reset, so a fresh run starts at `P-<year>-0001`
+rather than continuing a sequence whose receipts no longer exist.
+
+`--lists` additionally drops any seva, samaj or category the seed did not create, which
+is what a run of tests leaves behind: this database had picked up 66 seva called things
+like "Redate Test 1790017245629" and 33 samaj called "Corrected Samaj 408269". It reads
+the keepers out of `seed.js` and `db.js` rather than repeating them, so the two cannot
+drift — **and it must match a whole quoted string per quote style**, not "anything
+between two quote characters": one mandir pooja is written `"Samaran's Main Kalash
+Pooja"` in double quotes because of the apostrophe, and a combined `[^'"]` class stops
+dead there, which is how the first run of this deleted fifteen real poojas as junk.
+`npm run seed` put them back, which is the whole reason that script is idempotent.
+
+**Accounts are deliberately untouched by reset.** An account is a person, not test data.
+
+`seed:demo` is small on purpose — `seed-dummy.js` covers every booking state at once and
+makes a few hundred rows doing it, which is right for checking money logic and wrong for
+looking at a screen. The ten it creates carry one of each state worth seeing (pending,
+part paid, covered, overpaid, cancelled, Bapa covering part, a gift from Bapa, a dated
+seva and an undated one, a devotee with no mobile and one with no seva).
 
 There is **no build step, bundler, linter, or test suite** — nothing to run beyond the
 above. The frontend is served as-is from `public/`, so a reload is the whole feedback
