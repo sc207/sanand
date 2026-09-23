@@ -1213,11 +1213,40 @@ dialog#sheet::backdrop { background: transparent; }
   .stats-grid > *:nth-child(odd)::before { display: none; }
 
   /* The disc is decoration once the figures are this small, and it is
-     the single biggest thing in each cell. */
+     the single biggest thing in each cell — so on a phone it goes.
+
+     Two reasons, and the second is the one that was reported. It costs
+     28px plus a gap out of a 171px cell, better than a fifth of the
+     width, which is what pushed "10 devotees registered" onto a second
+     line and left the rows at three different heights (96 / 113 / 79
+     at 320px). And it was sitting in the WRONG PLACE: styles.css lays
+     the card out as a column at 600px and puts the disc at
+     `align-self: flex-end`, meaning the right-hand end of that column;
+     app-extras overrides the container to row-reverse but the
+     leftover flex-end then means the BOTTOM of the row, so the disc
+     floated low-left with the label above it beside nothing. Half an
+     override is worse than neither.
+
+     Nothing is lost by dropping it: every figure is labelled in words.
+     The tablet band below keeps its disc and simply pins it to the
+     first line. */
+  .stats-grid > .stat-card > .stat-card-icon-wrapper,
+  .stats-grid > .stat > .stat-ico { display: none; }
+  /* Put the five-tile strip's own rules back. The desktop treatment
+     kills the fourth cell's left rule (there it starts the second
+     band) and zeroes every top border, both at a specificity that
+     outranks the plain row rules above — so on two columns the strip
+     lost its horizontal rules entirely, and the second row lost its
+     divider while the first kept one. Re-asserted with the same
+     :has() prefix, or it loses the same argument again. */
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > *:nth-child(n+3) {
+    border-top: 1px solid var(--warm-border);
+  }
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(4)::before {
+    display: block;
+  }
   .stats-grid > .stat:has(.stat-ico),
   .stats-grid > .stat-card { gap: .5rem; }
-  .stat-ico, .stat-card-icon-wrapper { width: 28px; height: 28px; }
-  .stat-ico .ico, .stat-card-icon-wrapper .ico { width: 16px; height: 16px; }
   .stat-card-value { font-size: 1.05rem; }
   .stat-card-title { font-size: .72rem; margin-bottom: .05rem; }
   .mg-muted-xs { font-size: .68rem; }
@@ -1517,6 +1546,25 @@ table.dt td.dt-act, table.dt th.dt-act { width: 1%; white-space: nowrap; text-al
     width: 1px; background: var(--warm-border); display: block;
   }
   .stats-grid > *:nth-child(odd)::before { display: none; }
+  /* Pin the disc to the first line. styles.css's own 600px rule gives
+     it `align-self: flex-end` for a COLUMN card; this strip is a row,
+     where flex-end means the bottom — so the disc dropped away from
+     the title it belongs to. Specific enough to outrank it. */
+  .stats-grid > .stat-card > .stat-card-icon-wrapper,
+  .stats-grid > .stat > .stat-ico { align-self: flex-start; }
+  /* Put the five-tile strip's rules back. The desktop treatment above
+     kills the fourth cell's left rule (there it starts the second
+     band) and zeroes every top border, both at a specificity that
+     outranks the plain row rules here — so on two columns the strip
+     lost its horizontal rules entirely and the second row lost its
+     divider while the first kept one. Re-asserted with the same
+     :has() prefix, or it loses the same argument again. */
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > *:nth-child(n+3) {
+    border-top: 1px solid var(--warm-border);
+  }
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(4)::before {
+    display: block;
+  }
 }
 
 /* ============================================================
@@ -1752,6 +1800,40 @@ body.drawer-open { overflow: hidden; }
    stacking is simply undone — tablet portrait was getting the phone
    layout for no reason, since the 860px breakpoint is set for tables
    far wider than this one. */
+/* The seva-name list is a reference the operator opens to check one
+   spelling, not something to read through. Thirty-five rows through
+   the generic stacking came to 2460px on a phone — 69px a row, each
+   repeating the word "Days" — so opening it buried the rest of the
+   step. One line per seva, its days under the name, and the whole list
+   scrolls in its own box: the same answer the invitation checklist
+   gets, and for the same reason. */
+.imp-seva-wrap { max-height: 46vh; overflow-y: auto; }
+@media (max-width: 560px) {
+  table.dt.imp-seva tbody tr {
+    display: block;
+    padding: .4rem 0;
+    border-bottom: 1px solid var(--warm-border);
+  }
+  table.dt.imp-seva tbody tr:last-child { border-bottom: 0; }
+  table.dt.imp-seva td { display: block; padding: 0; }
+  table.dt.imp-seva td:not(:first-child):not(.dt-act)::before { content: none; }
+  table.dt.imp-seva td:first-child { font-weight: 600; }
+  table.dt.imp-seva td:nth-child(2) {
+    font-size: .8rem;
+    color: var(--muted-brown);
+    margin-top: .1rem;
+  }
+}
+@media (min-width: 561px) and (max-width: 860px) {
+  table.dt.imp-seva { display: table; width: 100%; }
+  table.dt.imp-seva thead { display: table-header-group; }
+  table.dt.imp-seva tbody { display: table-row-group; }
+  table.dt.imp-seva tr { display: table-row; }
+  table.dt.imp-seva td, table.dt.imp-seva th { display: table-cell; padding: .5rem; }
+  table.dt.imp-seva td:not(:first-child):not(.dt-act)::before { content: none; }
+  table.dt.imp-seva th:first-child, table.dt.imp-seva th:nth-child(2) { min-width: 0; }
+}
+
 @media (min-width: 561px) and (max-width: 860px) {
   table.dt.imp-cols, table.dt.imp-rows { display: table; width: 100%; }
   table.dt.imp-cols thead, table.dt.imp-rows thead { display: table-header-group; }

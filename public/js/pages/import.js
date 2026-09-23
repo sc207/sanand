@@ -207,7 +207,7 @@
     return UI.moreFields(`The ${open.length} seva names the Seva column accepts`, `
       <p class="mg-muted-xs">Write the name exactly as it appears here. Where a seva runs on
          several days, the Seva date column must name one of them.</p>
-      <div class="dt-wrap"><table class="custom-table dt">
+      <div class="dt-wrap imp-seva-wrap"><table class="custom-table dt imp-seva">
         <thead><tr><th>Seva</th><th>Days</th></tr></thead><tbody>${rows}</tbody></table></div>`,
       { count: open.length });
   }
@@ -288,10 +288,18 @@
 
     const c = r.counts || {};
     const bad = c.error || 0;
+    /* The .stat-card-info wrapper is not decoration: .stat-card is a
+       row-reverse flex, so without it the label and the figure become
+       two items on ONE line and the strip reads "10 Rows read" instead
+       of a figure above its name. Every other figure in the app wraps
+       them; this one did not, and it showed up the moment the cells
+       were narrow enough to matter. */
     const fig = (k, v, cls) => `
       <div class="stat-card ${cls || ''}">
-        <div class="stat-card-title">${esc(k)}</div>
-        <div class="stat-card-value">${esc(String(v))}</div>
+        <div class="stat-card-info">
+          <span class="stat-card-title">${esc(k)}</span>
+          <span class="stat-card-value">${esc(String(v))}</span>
+        </div>
       </div>`;
 
     const newLk = Object.entries(r.newLookups || {}).filter(([, v]) => v.length);
