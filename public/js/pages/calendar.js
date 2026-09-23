@@ -41,14 +41,19 @@
         const dayE = entries.map((e, i) => ({ e, i })).filter((x) => x.e.date === iso);
         const shown = dayE.slice(0, MAX_CHIPS);
         const overflow = dayE.length - shown.length;
-        cells += `<div class="mg-cal-cell ${iso === today ? 'mg-cal-today' : ''}">
+        /* The whole day jumps to that day in the agenda underneath.
+           On a phone the chips are dots — far too small to aim at —
+           so the cell has to be the target; on a desktop it is a
+           useful extra on the blank part of a day. */
+        cells += `<div class="mg-cal-cell ${iso === today ? 'mg-cal-today' : ''}${
+            dayE.length ? ' has-entries' : ''}"${dayE.length ? ` data-jump="${attr(iso)}"` : ''}>
           <div class="mg-cal-date">${d}${iso === today ? `<span class="mg-cal-todaytag">Today</span>` : ''}</div>
           ${shown.map((x) => `<div class="mg-cal-event cal-ev-${attr(x.e.type)}" style="--c:${attr(x.e.color)}"
               data-goto="${attr(x.i)}" title="${attr(x.e.title || '')}">
             <div class="mg-ev-title">${esc(x.e.title)}</div>
             <div class="mg-ev-meta">${esc(x.e.sub || '')}</div>
           </div>`).join('')}
-          ${overflow > 0 ? `<div class="cal-more-chip" data-jump="${attr(iso)}">+${num(overflow)} more</div>` : ''}
+          ${overflow > 0 ? `<div class="cal-more-chip" data-jump="${attr(iso)}">+${num(overflow)}<span class="cmc-word"> more</span></div>` : ''}
         </div>`;
       }
       const trail = (7 - ((startDow + daysIn) % 7)) % 7;
@@ -156,7 +161,13 @@
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }));
       body.querySelectorAll('[data-goto]').forEach((b) =>
-        b.addEventListener('click', () => goto(entries[Number(b.getAttribute('data-goto'))])));
+        b.addEventListener('click', (e) => {
+          /* The cell around it now jumps to the agenda, and opening an
+             entry and scrolling the page under it at the same time is
+             two answers to one tap. */
+          e.stopPropagation();
+          goto(entries[Number(b.getAttribute('data-goto'))]);
+        }));
     } catch (e) {
       body.innerHTML = UI.errorState(e.message);
     }

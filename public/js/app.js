@@ -91,9 +91,37 @@
     if (e.target.id === 'sheet') UI.closeSheet();
   });
 
+  /* ---- the off-canvas drawer ----
+     Three things were missing, and all three are the same omission:
+     the drawer knew how to open and nothing else knew it was open.
+       - Tapping a link inside it navigated and left the drawer sitting
+         over the page you had just asked for, with the hamburger the
+         only way back out.
+       - There was nothing to tap outside it. Escape worked, which is
+         no help at all on the phone and tablet this layout exists for.
+       - The page behind stayed scrollable underneath it.
+     `setDrawer` owns all of that in one place, so a future caller
+     cannot open it and forget half. */
+  const drawer = document.getElementById('sidebar');
+  const scrim = document.getElementById('sidebarScrim');
+
+  function setDrawer(open) {
+    drawer.classList.toggle('open', open);
+    if (scrim) scrim.hidden = !open;
+    document.body.classList.toggle('drawer-open', open);
+  }
+  const closeDrawer = () => setDrawer(false);
+
   document.getElementById('toggleSidebar').addEventListener('click', () => {
-    document.getElementById('sidebar').classList.toggle('open');
+    setDrawer(!drawer.classList.contains('open'));
   });
+  if (scrim) scrim.addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer();
+  });
+  /* Any navigation closes it, wherever it came from — a link in the
+     drawer, the bottom bar, the More sheet or a card on the page. */
+  window.addEventListener('hashchange', closeDrawer);
 
   const search = document.getElementById('globalSearchInput');
   if (search) search.addEventListener('focus', () => { search.blur(); Forms.globalSearch(); });

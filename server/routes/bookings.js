@@ -8,6 +8,7 @@
    never take the same last patla. */
 const express = require('express');
 const db = require('../db');
+const { slotWhen } = require('../util/dates');
 const { log } = require('../middleware/audit');
 const { upsertDevotee } = require('./devotees');
 const { readPaymentEntries, insertPaymentRows, actingUser } = require('../util/payment-entries');
@@ -170,7 +171,7 @@ router.post('/', (req, res) => {
     const book = db.transaction(() => {
       const fresh = db.prepare(`SELECT * FROM pooja_slots WHERE id = ?`).get(slot.id);
       if (fresh.capacity !== null && fresh.booked_count >= fresh.capacity) {
-        throw Object.assign(new Error(`${slot.slot_date} is fully booked — please pick another day.`), { status: 409 });
+        throw Object.assign(new Error(`${slotWhen(slot.slot_date)} is fully booked — please pick another day.`), { status: 409 });
       }
       const info = db.prepare(`
         INSERT INTO sevarthi_bookings (slot_id, devotee_id, amount_committed, bhuvaji_planned_amount, is_gift, notes, status)
@@ -197,7 +198,7 @@ router.post('/', (req, res) => {
     const row = db.prepare(BOOKING_SELECT + ` WHERE b.id = ?`).get(bookingId);
     log(req, {
       action: 'create', entity: 'booking', entityId: bookingId,
-      summary: `${row.full_name} added as sevarthi — ${row.pooja_name} on ${row.slot_date} (₹${amountCommitted})` +
+      summary: `${row.full_name} added as sevarthi — ${row.pooja_name} on ${slotWhen(row.slot_date)} (₹${amountCommitted})` +
                (isGift ? ' — a gift from Bhuvaji Suresh Bapa' : ''),
       details: { pooja: row.pooja_name, date: row.slot_date, amount_committed: amountCommitted,
                  bhuvaji_planned: bhuvajiPlanned, gift_from_bapa: !!isGift },
@@ -209,7 +210,7 @@ router.post('/', (req, res) => {
         action: 'payment', entity: 'payment', entityId: paymentIds[i],
         summary: `₹${e.amount} cash received from ` +
                  `${e.payer_type === 'bhuvaji' ? 'Bapa (on behalf of ' + row.full_name + ')' : row.full_name}` +
-                 ` at registration — ${row.pooja_name} ${row.slot_date} [${row.status}]`,
+                 ` at registration — ${row.pooja_name} ${slotWhen(row.slot_date)} [${row.status}]`,
         details: { amount: e.amount, payer_type: e.payer_type, booking_id: bookingId, at_registration: true },
       });
     });
@@ -239,7 +240,7 @@ router.post('/:id/cancel', (req, res) => {
   const row = db.prepare(BOOKING_SELECT + ` WHERE b.id = ?`).get(booking.id);
   log(req, {
     action: 'cancel', entity: 'booking', entityId: booking.id,
-    summary: `Cancelled sevarthi booking for ${row.full_name} — ${row.pooja_name} ${row.slot_date}` +
+    summary: `Cancelled sevarthi booking for ${row.full_name} — ${row.pooja_name} ${slotWhen(row.slot_date)}` +
              (paid > 0 ? ` (₹${paid} already received — refund to be settled)` : ''),
     details: { amount_paid: paid, reason: req.body.reason || null },
   });

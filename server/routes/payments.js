@@ -6,7 +6,7 @@ const express = require('express');
 const db = require('../db');
 const { log } = require('../middleware/audit');
 const { refreshStatus } = require('./bookings');
-const { todayLocal, monthLocal } = require('../util/dates');
+const { todayLocal, monthLocal, slotWhen } = require('../util/dates');
 const { readPaymentEntries, insertPaymentRows, actingUser } = require('../util/payment-entries');
 
 const router = express.Router();
@@ -156,7 +156,7 @@ router.post('/', (req, res) => {
       summary: `₹${row.amount} cash received from ` +
                `${row.payer_type === 'bhuvaji' ? 'Bapa (on behalf of ' + row.full_name + ')' : row.full_name}` +
                `${rows.length > 1 ? ' [split payment]' : ''}` +
-               ` — ${row.pooja_name} ${row.slot_date} [${updated.status}]`,
+               ` — ${row.pooja_name} ${slotWhen(row.slot_date)} [${updated.status}]`,
       details: { amount: row.amount, payer_type: row.payer_type, booking_id: booking.id,
                  split: rows.length > 1 },
     });

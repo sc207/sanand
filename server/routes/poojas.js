@@ -2,6 +2,7 @@
    poojas inside them, and the per-day seating (patla) slots. */
 const express = require('express');
 const db = require('../db');
+const { slotWhen } = require('../util/dates');
 const { log } = require('../middleware/audit');
 
 const router = express.Router();
@@ -387,7 +388,7 @@ router.put('/slots/:slotId', (req, res) => {
   db.prepare(`UPDATE pooja_slots SET capacity = ? WHERE id = ?`).run(capacity, slot.id);
   log(req, {
     action: 'update', entity: 'pooja_slot', entityId: slot.id,
-    summary: `Seats for ${slot.slot_date} set to ${capacity === null ? 'unlimited' : capacity}`,
+    summary: `Seats for ${slotWhen(slot.slot_date)} set to ${capacity === null ? 'unlimited' : capacity}`,
   });
   res.json(db.prepare(`SELECT * FROM pooja_slots WHERE id = ?`).get(slot.id));
 });

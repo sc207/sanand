@@ -10,4 +10,11 @@ function monthLocal() {
   return todayLocal().slice(0, 7);
 }
 
-module.exports = { todayLocal, monthLocal };
+/* A pooja slot with no date yet is the normal early state, not missing
+   data — but interpolated raw into a sentence it reads as
+   "added as sevarthi — Pothi Yatra on null", which is what the audit
+   trail was showing. Every message that names a slot's day goes
+   through here. */
+const slotWhen = (iso) => (iso ? String(iso) : 'a date not fixed yet');
+
+module.exports = { todayLocal, monthLocal, slotWhen };

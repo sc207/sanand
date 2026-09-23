@@ -1459,3 +1459,77 @@ table.dt td.dt-act, table.dt th.dt-act { width: 1%; white-space: nowrap; text-al
   }
   .stats-grid > *:nth-child(odd)::before { display: none; }
 }
+
+/* ============================================================
+   THE OFF-CANVAS DRAWER
+   ------------------------------------------------------------
+   Below 1200px the sidebar slides in over the page. It needs
+   something behind it: without a scrim the page underneath reads as
+   ordinary and tappable, and on a touch screen there is no Escape
+   key, so the hamburger was the only way back out.
+   ============================================================ */
+.sidebar-scrim {
+  position: fixed;
+  inset: 0;
+  /* Under the drawer, over everything else. .sidebar sits above this. */
+  z-index: 90;
+  background: rgba(45, 26, 20, 0.45);
+  backdrop-filter: blur(1px);
+  animation: scrimIn .18s ease-out;
+}
+@keyframes scrimIn { from { opacity: 0 } to { opacity: 1 } }
+@media (prefers-reduced-motion: reduce) { .sidebar-scrim { animation: none; } }
+/* The drawer only exists below the breakpoint, so neither does this. */
+@media (min-width: 1201px) { .sidebar-scrim { display: none !important; } }
+/* The page behind must not scroll out from under the drawer. */
+body.drawer-open { overflow: hidden; }
+@media (min-width: 1201px) { body.drawer-open { overflow: auto; } }
+/* Above the scrim, and above the bottom bar it now covers. */
+.sidebar.open { z-index: 95; }
+
+/* The bottom bar: "More" was 42px across — tall enough and still a
+   miss sideways. Every stop on it is at least a thumb wide now. */
+.mobile-nav-item { min-width: 48px; }
+
+/* ============================================================
+   THE MONTH GRID ON A SMALL SCREEN
+   ------------------------------------------------------------
+   Seven columns in 390px is about 45px a day, and a named chip in
+   45px is "Pad…", "1 pa…", "Don…" — a grid of truncated words that
+   says nothing and cannot be read. The automated layout sweep walked
+   past it, correctly: those chips truncate with an ellipsis, which
+   everywhere else means "cut on purpose".
+
+   The month grid's job on a phone is which days have something on
+   them, in what kind. So the chips become coloured dots, and the
+   agenda list already under the calendar carries the detail — tapping
+   a day scrolls to it. Nothing is lost; the part that was unreadable
+   stops pretending to be readable.
+   ============================================================ */
+/* 900px, not 700: a named chip needs about 120px to show a word, so
+   seven columns need ~900 before one reads as anything. At 768 the
+   columns are 95px and "Padhramni" was still "Padhram…". */
+@media (max-width: 900px) {
+  .mg-cal-cell { min-height: 58px; padding: .3rem .25rem; }
+  .mg-cal-cell.has-entries { cursor: pointer; }
+  .mg-cal-date { font-size: .66rem; margin-bottom: .2rem; }
+  .mg-cal-todaytag { display: none; }        /* the cell is already ringed */
+
+  /* One dot per entry, in its own colour, wrapping across the cell. */
+  .mg-cal-cell .mg-cal-event {
+    display: inline-block; width: 7px; height: 7px; margin: 0 2px 2px 0;
+    padding: 0; border: 0; border-radius: 50%;
+    background: var(--c); vertical-align: middle;
+    /* The day owns the tap: a 7px target is not one. */
+    pointer-events: none;
+  }
+  .mg-cal-cell .mg-cal-event:hover { transform: none; }
+  .mg-cal-cell .mg-ev-title, .mg-cal-cell .mg-ev-meta { display: none; }
+  /* "+22" says it; "+22 more" wraps onto a second line in a 45px
+     column and costs a row of the month to say nothing extra. */
+  .cal-more-chip {
+    display: inline-block; padding: 0 .2rem; font-size: .58rem;
+    background: transparent; pointer-events: none;
+  }
+  .cal-more-chip .cmc-word { display: none; }
+}

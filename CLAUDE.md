@@ -361,6 +361,26 @@ Easy to get wrong, and it changes what a "day" means:
   rings; and `.lead-v` inherits `--font-heading` (Cinzel), which renders lowercase as
   small caps — right for a figure, wrong for a phrase like "In 3 days", so the padhramni
   lead overrides it back to `--font-body`.
+- **The sidebar is an off-canvas drawer below 1200px, and `setDrawer` in `app.js` owns
+  everything that follows from it being open.** It used to only know how to open: tapping
+  a link inside it navigated and left the drawer sitting over the page you had just asked
+  for, there was nothing to tap outside it (Escape worked, which is no help on the phone
+  and tablet the layout exists for), and the page behind stayed scrollable. One function
+  toggles the class, the `#sidebarScrim` and `body.drawer-open` together, and a
+  `hashchange` listener closes it on *any* navigation — the drawer, the bottom bar, the
+  More sheet or a card on the page.
+- **A grid of seven columns needs about 900px before a named chip reads as a word.** The
+  Universal Calendar's day chips were "Pad…", "1 pa…", "Don…" at phone and tablet-portrait
+  widths — a month of truncated text that says nothing. Below 900px the chips become
+  coloured dots and the whole day cell jumps to that day in the agenda list already under
+  the calendar, which is where the detail lives. Note the layout sweep walked past this
+  and was right to: those chips truncate with `text-overflow: ellipsis`, which everywhere
+  else means "cut on purpose". Some things only a pair of eyes finds.
+- **An undated slot must never be interpolated raw into a sentence.** The audit trail read
+  "added as sevarthi — Pothi Yatra on null", because `slot_date` is legitimately NULL
+  before the trust fixes a date. `slotWhen()` in `util/dates.js` is the one place that
+  turns it into words; every audit summary and error that names a slot's day goes through
+  it.
 - **Touch targets are raised under `@media (pointer: coarse)`, never globally.** Measured
   at 390 / 768 / 1024 / 1440, nothing scrolls sideways and nothing is clipped, but a lot
   of controls are 26–29px tall and several are 16px squares — right for a mouse on a
