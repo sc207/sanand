@@ -77,7 +77,7 @@ console.log(`  ${devotees.length} devotees`);
    an undated one are picked deliberately: "no date yet" is the normal
    early state and every screen has to show it. */
 const slots = db.prepare(`
-  SELECT ps.id, ps.slot_date, pe.name, pe.amount
+  SELECT ps.id, ps.slot_date, pe.name, pe.amount, pe.category
     FROM pooja_slots ps JOIN pooja_events pe ON pe.id = ps.pooja_id
    WHERE pe.status <> 'closed'
    ORDER BY (ps.slot_date IS NULL), pe.id, ps.id
@@ -87,9 +87,27 @@ if (!slots.length) {
   db.close();
   process.exit(1);
 }
-const dated = slots.filter((s) => s.slot_date);
 const undated = slots.filter((s) => !s.slot_date);
-const pick = (i) => (dated.length ? dated[i % dated.length] : slots[i % slots.length]);
+
+/* Spread the seats across all three Mahotsav categories, one after the
+   other, rather than filling the dated days first.
+
+   Taking the dated slots first was simpler and put every sevarthi on
+   the Maha Yagna, because those are the only days the seed dates. The
+   dashboard then showed "0 registered" against Mandir ni Pooja and
+   Bhagvat Saptah, the katha and pooja screens had nothing on them at
+   all, and the payments page's category filter had a single category
+   to narrow between — so the one control that exists to answer "which
+   part of the Mahotsav am I looking at" could not be tried on the demo
+   data at all. Ten rows should show the shape of the event, not one
+   corner of it. */
+const byCat = {};
+slots.forEach((s) => { (byCat[s.category] = byCat[s.category] || []).push(s); });
+const cats = Object.keys(byCat);
+const pick = (i) => {
+  const list = byCat[cats[i % cats.length]];
+  return list[Math.floor(i / cats.length) % list.length];
+};
 
 /* Ten seats, one per state worth seeing. `gift` is Bapa giving the
    whole seva; `bapa` is Bapa covering part of one — different things,

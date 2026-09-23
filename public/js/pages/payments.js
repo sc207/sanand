@@ -74,7 +74,23 @@
 
   function categoryOptions() {
     const base = state.bookings.filter((b) => matches(b, state.filter));
-    return groupCounts(base, (b) => b.category, (b) => CAT_LABEL[b.category] || b.category);
+    const opts = groupCounts(base, (b) => b.category, (b) => CAT_LABEL[b.category] || b.category);
+    /* The same guard sevaOptions has, and for the same reason: a
+       category chosen before the status chip narrowed past it must stay
+       in the list. A <select> cannot hold a value no option carries, so
+       without this, clicking "Pending" on a category that has no pending
+       sevarthi silently reset the control to "All categories" while the
+       page went on filtering by a seva inside the category it had just
+       stopped showing. Only the seva half had the guard, so the pair
+       came apart in exactly one direction. */
+    if (state.category && !opts.some((o) => o.key === String(state.category))) {
+      opts.unshift({
+        key: String(state.category),
+        label: CAT_LABEL[state.category] || state.category,
+        n: 0,
+      });
+    }
+    return opts;
   }
 
   function sevaOptions() {
