@@ -1574,3 +1574,116 @@ body.drawer-open { overflow: hidden; }
 .icon-btn:hover { background: var(--warm-ivory); color: var(--primary-maroon); }
 .icon-btn:focus-visible { outline: 2px solid var(--antique-gold); outline-offset: 2px; }
 .icon-btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* ============================================================
+   IMPORT FROM EXCEL  (pages/import.js)
+   ------------------------------------------------------------
+   Reusing the theme's own tokens rather than inventing colours —
+   --success/--danger/--warning already carry the three states this
+   screen needs, and their -bg pairs are what the rest of the app
+   tints with.
+   ============================================================ */
+
+/* ---- 1. what are you importing ---- */
+.imp-kinds {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.imp-kind {
+  display: grid; gap: 6px; text-align: left; cursor: pointer;
+  padding: 18px; border: 1px solid var(--warm-border); border-radius: var(--radius-md);
+  background: var(--ivory-card); color: inherit; font: inherit;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast),
+              transform var(--transition-fast);
+}
+.imp-kind:hover { border-color: var(--primary-maroon); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.imp-kind:focus-visible { outline: 2px solid var(--antique-gold); outline-offset: 2px; }
+.imp-kind-ico { color: var(--primary-maroon); }
+.imp-kind-t { font-family: var(--font-heading); font-size: 1.05rem; color: var(--primary-maroon); }
+.imp-kind-s { font-size: .86rem; color: var(--muted-brown); line-height: 1.45; }
+.imp-kind-n { font-size: .76rem; color: var(--muted-brown); opacity: .8; }
+
+/* ---- 2. the format ---- */
+.imp-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.imp-lede { color: var(--muted-brown); font-size: .9rem; line-height: 1.55; margin: 0 0 12px; }
+.imp-req, .imp-error, .imp-ok {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 11px 14px; border-radius: var(--radius-sm);
+  font-size: .87rem; line-height: 1.5; margin: 0 0 14px;
+}
+.imp-req { background: var(--gold-bg); border: 1px solid var(--gold-light); color: var(--dark-brown); }
+.imp-error { background: var(--danger-bg); border: 1px solid var(--danger); color: var(--danger); }
+.imp-ok { background: var(--success-bg); border: 1px solid var(--success); color: var(--dark-brown); }
+/* .ico is display:block, which on a flex line of its own is fine — but
+   it must not shrink away when the sentence beside it is long. */
+.imp-req .ico, .imp-error .ico, .imp-ok .ico { flex: 0 0 auto; margin-top: 1px; }
+
+.imp-cols code, .imp-notes code {
+  background: var(--warm-ivory); border: 1px solid var(--warm-border);
+  border-radius: 4px; padding: 1px 6px; font-size: .85em; white-space: nowrap;
+}
+.imp-notes { margin: 4px 0 0; padding-left: 18px; }
+.imp-notes li { margin-bottom: 8px; font-size: .87rem; line-height: 1.55; color: var(--dark-brown); }
+
+/* ---- the drop zone ---- */
+.imp-drop {
+  display: grid; justify-items: center; gap: 6px; text-align: center;
+  padding: 34px 20px; cursor: pointer; margin-bottom: 14px;
+  border: 2px dashed var(--warm-border); border-radius: var(--radius-md);
+  background: var(--warm-ivory);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.imp-drop:hover, .imp-drop.is-over { border-color: var(--primary-maroon); background: var(--gold-bg); }
+.imp-drop .ico { color: var(--primary-maroon); }
+.imp-drop-t { font-family: var(--font-heading); color: var(--primary-maroon); word-break: break-all; }
+.imp-drop-s { font-size: .8rem; color: var(--muted-brown); }
+
+/* ---- 3. check ---- */
+/* No grid override here on purpose. app-extras already styles a stats
+   grid of EXACTLY five tiles (the :has(> :nth-child(5)) rule above, which
+   the dashboard uses) and does it at higher specificity, so a plain
+   .imp-figs rule both loses and fights a deliberate house treatment.
+   Five figures here therefore lay out exactly as the dashboard's five do. */
+.imp-figs { margin-bottom: 14px; }
+.imp-figs .stat-card.is-bad { border-color: var(--danger); }
+.imp-figs .stat-card.is-bad .stat-card-value { color: var(--danger); }
+
+.imp-opts { display: grid; gap: 10px; margin: 0 0 16px; }
+.imp-check {
+  display: flex; align-items: flex-start; gap: 10px; cursor: pointer;
+  padding: 11px 14px; border: 1px solid var(--warm-border);
+  border-radius: var(--radius-sm); background: var(--warm-ivory);
+}
+.imp-check input { margin-top: 3px; flex: 0 0 auto; }
+.imp-check span { font-size: .87rem; line-height: 1.5; }
+.imp-check .mg-muted-xs { display: block; margin-top: 3px; }
+.imp-willadd, .imp-unknown { margin: 0; }
+.imp-unknown .ico { display: inline-block; vertical-align: -3px; }
+
+.imp-rows .imp-errs { margin: 0; padding-left: 17px; color: var(--danger); }
+.imp-rows .imp-errs li { margin: 2px 0; font-size: .84rem; line-height: 1.45; }
+.imp-rows .imp-notes-sm { margin: 5px 0 0; padding-left: 17px; color: var(--muted-brown); }
+.imp-rows .imp-notes-sm li { font-size: .78rem; line-height: 1.4; }
+.imp-rows tr.imp-bad > td { background: var(--danger-bg); }
+.imp-rows td .mg-muted-xs { display: inline-block; margin-left: 4px; }
+
+/* ---- 4. done ---- */
+.imp-tally { margin: 0 0 12px; padding-left: 18px; }
+.imp-tally li { margin: 4px 0; font-size: .92rem; }
+.imp-done .imp-ok { font-size: .95rem; align-items: center; }
+
+/* ---- phone ----
+   The format and preview tables stack through `table.dt`'s own rules,
+   which need their `n` width undone the same way every other stacked
+   table here does. The kind cards go to one column so a tap target is
+   the width of the thumb, not a third of it. */
+@media (max-width: 860px) {
+  .imp-kinds { grid-template-columns: 1fr; }
+  .imp-head { flex-direction: column; align-items: stretch; }
+  .imp-head .btn { width: 100%; justify-content: center; }
+  .imp-drop { padding: 24px 14px; }
+  .imp-rows td.n, .imp-cols td.n { width: auto; }
+}

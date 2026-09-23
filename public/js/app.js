@@ -13,6 +13,7 @@
     calendar:   { title: 'Universal Calendar' },
     donations:  { title: 'Donation' },
     invitation: { title: 'Invitation' },
+    import:     { title: 'Import from Excel' },
     settings:   { title: 'Settings' },
     accounts:   { title: 'Accounts & Access' },
   };

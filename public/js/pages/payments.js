@@ -428,12 +428,23 @@
     const rows = visibleRows();
     if (!rows.length) {
       /* Say which of the three narrowings emptied it, or the operator
-         has to undo them one at a time to find out. */
+         has to undo them one at a time to find out. That includes
+         NAMING the status: "no sevarthi in this state" made the
+         operator look back up at the chips to find out which state was
+         in force, which is the one thing this sentence exists to save
+         them. The chip's own label is reused, so the wording here can
+         never drift from what is on the button. */
+      /* Quoted after "under", not slotted into a sentence: the chips are
+         a mix of states and indicators, so "No sevarthi is Gift from
+         Bapa" and "...is Excess" fall apart while one shape holds for
+         all eight. */
+      const chip = (FILTERS.find((f) => f[0] === state.filter) || [, ''])[1];
+      const inState = state.filter === 'all' ? 'No sevarthi' : `No sevarthi under "${chip}"`;
       body.innerHTML = UI.empty(
         state.filter === 'due' ? 'Nothing outstanding' : 'Nothing here',
         state.search ? `No sevarthi matches that search${scopeLabel() ? ' in ' + scopeLabel() : ''}.`
-          : scopeLabel() ? `No sevarthi in this state on ${scopeLabel()}.`
-          : 'No sevarthi in this state.', 'rupee');
+          : scopeLabel() ? `${inState} on ${scopeLabel()}.`
+          : `${inState}.`, 'rupee');
       return;
     }
 

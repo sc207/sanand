@@ -26,6 +26,8 @@ app.use('/api/bookings', require('./routes/bookings').router);
 app.use('/api/payments', require('./routes/payments'));
 app.use('/api/donations', require('./routes/donations'));
 app.use('/api/visits', require('./routes/visits'));
+/* The file arrives as raw bytes, so this mounts its own express.raw — see routes/import.js. */
+app.use('/api/import', require('./routes/import'));
 app.use('/api', require('./routes/misc'));
 
 app.use((err, req, res, next) => {          // eslint-disable-line no-unused-vars

@@ -219,6 +219,7 @@ keeps every part of the daily job:
 | `PUT`/`DELETE /api/payments/:id`, `PUT`/`DELETE /api/donations/:id` | accountant+ | Correcting or removing money already recorded rewrites what the trust holds, rather than adding to it |
 | `POST`/`PUT`/`DELETE /api/poojas/*` (including dates and slot seats) | admin+ | The seva list is the shape of the Mahotsav |
 | `POST`/`PUT /api/users` | admin+ | Who has an account |
+| `POST /api/import/preview`, `POST /api/import/commit` | admin+ | A bulk import is every write an operator can make, at a scale nobody reviews row by row |
 
 Registering a sevarthi, taking a payment, raising a commitment, changing seva, recording
 a padhramni or a donation are all **open to an operator** and must stay that way.
@@ -248,6 +249,7 @@ silently called the middleware instead, failing everything with
 | `/api/payments` | `GET /` · `GET /by-day` · `GET /outstanding` · `POST /` (single **or** split) · `PUT /:id` · `DELETE /:id` |
 | `/api/donations` | `GET /` · `POST /` · `PUT /:id` · `DELETE /:id` |
 | `/api/visits` | list / create / update / delete |
+| `/api/import` | `GET /kinds` · `GET /seva-names` · `GET /template/:kind` · `POST /preview` · `POST /commit` |
 | `/api` (`misc.js`) | `GET /dashboard` · `GET /calendar` · `GET`/`PUT` `/settings` · `GET`/`POST`/`PUT` `/users` · `GET /audit` · `GET /translate/status` · `POST /translate` · `POST /translate/warmup` |
 
 `POST /api/bookings/:id/reassign` moves a booking to another slot/pooja while keeping
@@ -317,8 +319,7 @@ Easy to get wrong, and it changes what a "day" means:
   segment to a page module. **To add a new page**: create `public/js/pages/x.js`
   exporting `global.Pages.x = { render }`, add its `<script>` tag to `index.html`, add
   an entry to `app.js`'s `PAGES` map, and add a nav link (`data-page="x"`) in the
-  sidebar/mobile-nav markup in `index.html` (and, if it belongs there, the `moreMenu()`
-  list in `app.js`). `window.navigate(page, ...params)` and `window.refreshPage()` are
+  sidebar/mobile-nav markup in `index.html`. `window.navigate(page, ...params)` and `window.refreshPage()` are
   the globals pages use to move around / re-render themselves after a mutation.
   **There is ONE menu.** The sidebar is it, on every width — below 1200px as a drawer,
   reached from the hamburger *and* from "More" in the bottom bar. There used to be two:
@@ -666,6 +667,81 @@ Easy to get wrong, and it changes what a "day" means:
   devotees by samaj / devotee category, there being no committee module until Phase 2;
   and its PDF/ZIP export needs jsPDF + html2canvas from a CDN, which the offline rule
   forbids — the print window's "Save as PDF" writes the same A5 pages.
+
+### Importing a spreadsheet
+
+`pages/import.js` · `routes/import.js` · `util/sheet-import.js` · `util/xlsx-read.js`.
+The trust keeps lists in Excel already; this is how those get in without retyping.
+
+**The import format IS the export format.** Every list already exports itself, and the
+import columns are those columns under the same headings, so the round trip works — export
+the register, fix a hundred cities in Excel, hand it back — and there is one vocabulary
+rather than two. Columns the app *derives* (Outstanding, Covered, Status, Excess) are
+accepted and **ignored**, not rejected, because the easiest file for an operator to give
+us is the one the app just gave them. `DERIVED` in `sheet-import.js` is that list; a new
+derived export column belongs in it.
+
+Four kinds — `devotees` · `sevarthi` · `donations` · `visits` — one spec each in `SPECS`,
+one shared engine. Headings match on letters and digits only (so `Mul Vatan`, `mul_vatan`
+and `MULVATAN` are one heading) against the label, the key and a list of `aliases`; order
+does not matter and unmatched columns are reported, not fatal.
+
+**Nothing is written until the operator has seen what will happen.** `analyse()` is a dry
+run over the whole file and is what the preview screen shows: per row, what it would do
+and what is wrong with it. `commit()` runs **the same analysis again** — the client never
+hands back its own verdict — and only then writes. Four rules hold it together:
+
+1. **The whole file is one transaction.** A half-applied import is the worst of the three
+   outcomes: nobody can tell which rows landed, and re-running doubles whatever did. Since
+   the preview has already named every error, refusing the file outright is the honest
+   answer.
+2. **It refuses to seat the same person twice.** Re-importing the same file is the single
+   likeliest operator mistake, and without the check it silently doubles every booking
+   *and every payment against it*. A row whose devotee already holds that exact seva is
+   reported as already present and skipped; `allow_duplicates` overrides, deliberately off.
+3. **The domain rules are not re-implemented.** Devotees go through `upsertDevotee`, money
+   through `insertPaymentRows`, receipts through `receipts.next`, gifts through
+   `resolveGift` (exported from `bookings.js` for exactly this), and the seat re-reads its
+   slot *inside* the transaction like every other path that seats someone. The preview's
+   capacity count is a courtesy, not the mechanism. A second copy of any of these is how
+   the importer would drift from the counter.
+4. **An unknown samaj or category is an error, not a silent insert.** `create_lookups` is
+   off by default so a misspelling surfaces instead of quietly forking the list.
+
+**`util/xlsx-read.js` reads .xlsx with no dependency** — it is a ZIP of XML and Node ships
+zlib. That is not frugality for its own sake: the offline rule forbids a CDN, and a parser
+we own fails in ways we can explain to an operator. Three things in it are load-bearing:
+
+- **Cells are placed by their own `r="C5"` reference, never by document order.** A row with
+  a blank City simply has no `<c>` for it, so reading in order shifts every later column
+  left and files a mobile number under "City" — wrong in a way that looks plausible all
+  the way into the database.
+- **Dates need `styles.xml`.** Excel stores a date as a number and puts the date-ness in
+  the cell's *style*, so `04/02/2027` is on disk as `46422`. Both built-in and custom
+  formats are resolved; a format code is only a date after quoted runs and `[...]` parts
+  are stripped, or the `m` in a literal like `"Month"` makes every currency cell a date.
+- The 1900 epoch is anchored at **1899-12-30** (absorbing both the off-by-one and Excel's
+  belief that 1900 was a leap year), and built with `Date.UTC` — a local-time date around
+  a DST boundary lands on the previous evening, the same trap as `toISOString()` from the
+  other side.
+
+CSV is read too, and the file is dispatched **on its first bytes** (`PK` = zip), not its
+name, so a .csv renamed .xlsx still works. The separator is sniffed from the header line,
+because "CSV" out of a Gujarati Windows locale can be semicolon- or tab-separated.
+
+The template (`GET /api/import/template/:kind`) is a CSV with the **UTF-8 BOM** and two
+real example rows — a template full of "string, string, string" teaches nothing about what
+a date or an amount should look like. Its example data is checked by a test that imports
+the template into itself.
+
+**Where dates are ambiguous they are read DAY FIRST** (`04/02/2027` is 4 February), which
+is what everyone here writes. The format screen and the column help both say so, and a
+real Excel date cell avoids the question entirely.
+
+The page is a **page, not a sheet** — the one deliberate exception to "every form lives in
+the sheet", because it is not a form but a check screen, and its preview table needs the
+width. It shows the format *before* asking for a file: an operator who learns the columns
+from an error message has already wasted an afternoon in Excel.
 
 ### CSS — read this before changing styles
 

@@ -362,4 +362,4 @@ router.post('/:id/reassign', (req, res) => {
   res.json(row);
 });
 
-module.exports = { router, refreshStatus, BOOKING_SELECT };
+module.exports = { router, refreshStatus, BOOKING_SELECT, resolveGift };
