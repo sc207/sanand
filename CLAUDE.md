@@ -361,6 +361,23 @@ Easy to get wrong, and it changes what a "day" means:
   rings; and `.lead-v` inherits `--font-heading` (Cinzel), which renders lowercase as
   small caps — right for a figure, wrong for a phrase like "In 3 days", so the padhramni
   lead overrides it back to `--font-body`.
+- **Touch targets are raised under `@media (pointer: coarse)`, never globally.** Measured
+  at 390 / 768 / 1024 / 1440, nothing scrolls sideways and nothing is clipped, but a lot
+  of controls are 26–29px tall and several are 16px squares — right for a mouse on a
+  dense list page, a miss under a thumb. The minimum (44px, width as well as height:
+  an icon-only button is tall enough and still 39px across) applies only where the
+  pointer is coarse, so a desktop keeps the density the list pages were designed around.
+  It costs vertical room, which on a phone came straight out of the list, so the chrome
+  above tightens at the same breakpoint to give it back.
+  `responsive.js` is the sweep. Note that `Emulation.setDeviceMetricsOverride`'s `mobile`
+  flag resizes the viewport but leaves the pointer **fine** — without
+  `Emulation.setTouchEmulationEnabled` the coarse rules never match and the sweep quietly
+  reports on rules it is not exercising.
+- **A stacked table must undo the widths the table layout gave it.** `table.dt th.n/td.n`
+  carry `width: 1%`, which is what shrinks a figure column to its digits while the table
+  is a table. Below 860px every cell becomes a grid item and 1% of the row is two pixels;
+  the figures still *showed*, because they overflow visibly, so nothing looked wrong —
+  each simply sat in a 2px box and spilled across its neighbour's column.
 - **A list page is opened to see the list, so the list has to be on the first screen.**
   Measured at 390×844, the first row of data sat at 900px on Payments, 1028 on the
   Devotee register, 965 on Padhramni and 871 on Donations — every one below the fold, so
@@ -576,6 +593,20 @@ Easy to get wrong, and it changes what a "day" means:
   `.content-wrapper`. Without it, list rows stretch the full monitor and their two ends
   drift apart — a date at the far left and its amount at the far right. Keep the cap.
 - Icons are SVG sprite references (`/assets/icons.svg#name`, via `UI.icon()`), never emoji.
+  **The sprite is served `no-cache`, and must stay that way.** It is app code wearing a
+  picture's file extension: it changes whenever a screen gains an icon, and a `<use>`
+  pointing at a symbol the browser's cached copy does not have paints a silent empty box
+  — nothing on screen, nothing in the console. It was lumped in with photographs at
+  `max-age=604800`, so when `wallet`, `user-check` and `trending-up` arrived in one
+  commit, three of the dashboard's five figures showed blank discs for a week to anyone
+  holding the older sprite. Fonts and images still cache hard, because those are replaced
+  by adding a new file rather than by editing the old one.
+  **Check icon names in BOTH directions, and include the server.** A name can reach the
+  UI from the API — `CATEGORIES` in `poojas.js` gives each Mahotsav category an `icon` —
+  so a scan of `public/` alone will call such a symbol unreferenced. That is exactly how
+  `flame` came to be deleted as "never used once" while the Maha Yagna card sat empty.
+  A live check is the other half: `getBBox()` is 0×0 on an unresolved `<use>`, whatever
+  its computed colour, size and visibility say.
 
 ### Language
 

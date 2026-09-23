@@ -1315,6 +1315,13 @@ table.dt td.dt-act, table.dt th.dt-act { width: 1%; white-space: nowrap; text-al
     text-transform: uppercase; color: var(--muted-brown);
   }
   table.dt td.n { text-align: left; }
+  /* `width: 1%` is the trick that shrinks a figure column to its digits
+     while the table IS a table. Once it stacks, every cell is a grid
+     item and 1% of the row is two pixels — the figures still showed,
+     because they overflow visibly, but each sat in a 2px box and spilled
+     across its neighbour's column. Undo it with the table layout. */
+  table.dt th.n, table.dt td.n,
+  table.dt th.dt-act, table.dt td.dt-act { width: auto; }
   table.dt td.dt-sm-hide { display: none; }
   table.dt td.dt-act { grid-column: 1 / -1; margin-top: .55rem; text-align: left; }
   .dt-act-in { width: 100%; justify-content: space-between; }
@@ -1386,4 +1393,69 @@ table.dt td.dt-act, table.dt th.dt-act { width: 1%; white-space: nowrap; text-al
 .rcpt {
   font-variant-numeric: tabular-nums; letter-spacing: .02em;
   white-space: nowrap; color: var(--dark-brown); font-weight: 600;
+}
+
+/* ============================================================
+   TOUCH TARGETS
+   ------------------------------------------------------------
+   Measured across four widths: nothing scrolls sideways and nothing
+   is clipped, but a lot of controls are 26–29px tall, and several are
+   16px squares. That is fine under a mouse and a miss under a thumb —
+   the guidance everyone converged on is about 44px.
+
+   So the minimum is raised only where the pointer is coarse. A mouse
+   keeps the compact row actions the dense list pages were designed
+   around; a tablet or a phone gets something hittable. Nothing here
+   changes a desktop layout.
+   ============================================================ */
+@media (pointer: coarse) {
+  /* Width as well as height: a button holding only an icon is tall
+     enough and still 39px across, which is the same miss lying down. */
+  .btn { min-height: 44px; min-width: 44px; }
+  .icon-btn {
+    min-width: 44px; min-height: 44px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  /* The sort headings are a text run inside a <th>; padding rather than
+     a height keeps the heading row from growing more than it must. */
+  .dt-sort { min-height: 44px; padding-block: .5rem; }
+  .cal-legend-btn { min-height: 44px; }
+  /* The whole summary strip already toggles the panel, so the chevron
+     is a convenience rather than the only way in — but it still has to
+     be hittable. */
+  .icon-btn.row-expand { min-width: 44px; min-height: 44px; }
+}
+
+/* Raising every control to 44px costs vertical room, and on a phone
+   that room came out of the list: the first Payments row slipped nine
+   pixels below the fold, which is the one thing the phone layout was
+   fixed to prevent. The chrome above it gives the nine back. */
+@media (max-width: 560px) {
+  .btn-row { gap: .35rem; }
+  .sort-row, .filter-row { margin-bottom: .7rem; }
+  .search-bar { margin-top: .6rem !important; }
+  .mg-page-actions { margin-top: .4rem; }
+}
+
+/* On a tablet the strip's auto-fit lands on three columns and leaves
+   the fourth figure alone on a row of its own, which reads as though
+   it belongs to something else. Two by two divides evenly and gives
+   each sum room for its digits. */
+@media (min-width: 561px) and (max-width: 900px) {
+  .stats-grid,
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) {
+    grid-template-columns: 1fr 1fr;
+  }
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > *,
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(4),
+  .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(5) {
+    grid-column: auto;
+  }
+  .stats-grid > * { border-top: 0; }
+  .stats-grid > *:nth-child(n+3) { border-top: 1px solid var(--warm-border); }
+  .stats-grid > *:nth-child(even)::before {
+    content: ''; position: absolute; left: 0; top: 12%; bottom: 12%;
+    width: 1px; background: var(--warm-border); display: block;
+  }
+  .stats-grid > *:nth-child(odd)::before { display: none; }
 }

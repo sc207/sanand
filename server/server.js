@@ -40,7 +40,21 @@ app.use((err, req, res, next) => {          // eslint-disable-line no-unused-var
 const staticOpts = {
   etag: true,
   setHeaders(res, filePath) {
-    if (/\.(woff2?|png|jpe?g|svg|ico)$/i.test(filePath)) {
+    /* The icon sprite is app code wearing a picture's file extension.
+       It changes whenever a screen gains an icon, and every reference to
+       it is `<use href="/assets/icons.svg#name">` — so an operator
+       holding last week's copy gets a silent EMPTY BOX wherever a symbol
+       was added since, with nothing on screen or in the console to say
+       why. That is exactly what happened: wallet, user-check and
+       trending-up arrived in one commit, and three of the dashboard's
+       five figures showed blank discs for anyone whose browser had the
+       older sprite. It revalidates like the rest of the app now; it is
+       9 KB and served off the same laptop, so a 304 costs nothing.
+       Photographs and fonts, which are replaced by adding a new file
+       rather than editing the old one, still cache hard. */
+    if (/icons\.svg$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-cache');
+    } else if (/\.(woff2?|png|jpe?g|svg|ico)$/i.test(filePath)) {
       res.setHeader('Cache-Control', 'public, max-age=604800');
     } else {
       res.setHeader('Cache-Control', 'no-cache');
