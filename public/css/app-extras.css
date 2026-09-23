@@ -1183,6 +1183,12 @@ dialog#sheet::backdrop { background: transparent; }
   .stats-grid,
   .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) {
     grid-template-columns: 1fr 1fr;
+    /* Every row the same height. A sub-label like "10 devotees
+       registered" wraps in a 171px cell while "5 sevarthi pending"
+       does not, so the rows came out at 79 / 97 / 80 and the strip
+       read as ragged even once everything in it was correct. Equal
+       rows cost a few pixels and make it a grid again. */
+    grid-auto-rows: 1fr;
   }
   .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > *,
   .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(4),
@@ -1212,26 +1218,31 @@ dialog#sheet::backdrop { background: transparent; }
   }
   .stats-grid > *:nth-child(odd)::before { display: none; }
 
-  /* The disc is decoration once the figures are this small, and it is
-     the single biggest thing in each cell — so on a phone it goes.
+  /* The disc stays on a phone — the trust asked for it, and it is how
+     each figure is recognised at a glance.
 
-     Two reasons, and the second is the one that was reported. It costs
-     28px plus a gap out of a 171px cell, better than a fifth of the
-     width, which is what pushed "10 devotees registered" onto a second
-     line and left the rows at three different heights (96 / 113 / 79
-     at 320px). And it was sitting in the WRONG PLACE: styles.css lays
-     the card out as a column at 600px and puts the disc at
-     `align-self: flex-end`, meaning the right-hand end of that column;
-     app-extras overrides the container to row-reverse but the
-     leftover flex-end then means the BOTTOM of the row, so the disc
+     What was wrong with it was never that it existed. styles.css lays
+     the card out as a COLUMN below 600px and parks the disc at
+     `align-self: flex-end`, the right-hand end of that column;
+     app-extras overrides the container to row-reverse and left that
+     behind, where flex-end means the BOTTOM of the row — so the disc
      floated low-left with the label above it beside nothing. Half an
-     override is worse than neither.
+     override is worse than neither. Pinned to the first line it reads
+     correctly again.
 
-     Nothing is lost by dropping it: every figure is labelled in words.
-     The tablet band below keeps its disc and simply pins it to the
-     first line. */
+     Its SIZE is the other half. At 28px plus a .5rem gap it took a
+     fifth of a 171px cell, which is what pushed "10 devotees
+     registered" onto a second line and left the rows at three
+     different heights (96 / 113 / 79 at 320px). 24px and a tighter gap
+     keeps the mark and gives the words back their line. */
   .stats-grid > .stat-card > .stat-card-icon-wrapper,
-  .stats-grid > .stat > .stat-ico { display: none; }
+  .stats-grid > .stat > .stat-ico {
+    align-self: flex-start;
+    width: 24px;
+    height: 24px;
+  }
+  .stats-grid > .stat-card > .stat-card-icon-wrapper .ico,
+  .stats-grid > .stat > .stat-ico .ico { width: 14px; height: 14px; }
   /* Put the five-tile strip's own rules back. The desktop treatment
      kills the fourth cell's left rule (there it starts the second
      band) and zeroes every top border, both at a specificity that
@@ -1246,7 +1257,7 @@ dialog#sheet::backdrop { background: transparent; }
     display: block;
   }
   .stats-grid > .stat:has(.stat-ico),
-  .stats-grid > .stat-card { gap: .5rem; }
+  .stats-grid > .stat-card { gap: .45rem; }
   .stat-card-value { font-size: 1.05rem; }
   .stat-card-title { font-size: .72rem; margin-bottom: .05rem; }
   .mg-muted-xs { font-size: .68rem; }
@@ -1527,6 +1538,7 @@ table.dt td.dt-act, table.dt th.dt-act { width: 1%; white-space: nowrap; text-al
   .stats-grid,
   .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) {
     grid-template-columns: 1fr 1fr;
+    grid-auto-rows: 1fr;             /* equal rows — see the phone block */
   }
   .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > *,
   .stats-grid:has(> :nth-child(5)):not(:has(> :nth-child(6))) > :nth-child(4),
@@ -1695,7 +1707,19 @@ body.drawer-open { overflow: hidden; }
   display: flex; align-items: center; justify-content: space-between;
   gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
 }
+/* The step's job is to show the columns and take the file. Its heading
+   block had grown to a two-line Cinzel title, a full-width button, a
+   four-line paragraph and a notice — on a phone the whole screen went
+   by before a single column name appeared. The title is now just the
+   kind (the steps bar already says "The format"), the lede is one
+   line, and the reassurance about spelling and extra columns is
+   demoted to fine print below the one constraint that can actually
+   stop a row going in. */
 .imp-lede { color: var(--muted-brown); font-size: .9rem; line-height: 1.55; margin: 0 0 12px; }
+.imp-fine {
+  color: var(--muted-brown); font-size: .8rem; line-height: 1.5;
+  margin: -6px 0 14px;
+}
 .imp-req, .imp-error, .imp-ok {
   display: flex; align-items: flex-start; gap: 9px;
   padding: 11px 14px; border-radius: var(--radius-sm);

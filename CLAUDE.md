@@ -461,14 +461,18 @@ Easy to get wrong, and it changes what a "day" means:
   the import preview strip read "10 Rows read" instead of a figure above its name, and
   only showed it up once the cells were narrow. Every other figure in the app wraps them;
   copy that markup rather than the two inner lines alone.
-- **styles.css puts the figure disc at `align-self: flex-end` below 600px**, which is
-  right for the column card it lays out there and wrong for the row this app overrides it
-  to — flex-end then means the BOTTOM, so the disc floated low-left with the label above
-  it beside nothing, and it cost a fifth of the cell width, which is what pushed the
-  sub-labels onto second lines and left the rows at three different heights. Below 560px
-  the disc is hidden outright (every figure is labelled in words, so nothing is lost);
-  on the tablet band it is pinned back to the first line. Half an override is worse than
-  neither.
+- **styles.css puts the figure disc at `align-self: flex-end` below 600px**, which is right
+  for the column card it lays out there and wrong for the row this app overrides it to —
+  flex-end then means the BOTTOM, so the disc floated low-left with the label above it
+  beside nothing. Half an override is worse than neither; it is pinned to the first line at
+  every small width now. **Keep the disc.** The trust asked for it, it is how a figure is
+  recognised at a glance, and hiding it on phones was the wrong call — it is 24px there
+  rather than 28 because at the larger size it took a fifth of a 171px cell.
+- **The figure strip sets `grid-auto-rows: 1fr` below 900px.** A sub-label like "10 devotees
+  registered" wraps in a 171px cell where "5 sevarthi pending" does not, so the rows came
+  out at 79 / 97 / 80 and the strip read as ragged even once every tile in it was right.
+  Equal rows cost a few pixels and make it a grid again — prefer that to shrinking the type
+  or shortening the trust's own wording to make things fit.
 - **A figure strip of FIVE does not divide by two.** `app-extras.css` forces two columns
   under 900px (right for the four-figure strips on the list pages) and that swept the
   dashboard's five in with them, leaving Excess alone in the left column at half width with

@@ -86,8 +86,8 @@
       <div class="flex justify-between items-center mg-page-head">
         <div>
           <h1 class="banner-title mg-page-title">Import from Excel</h1>
-          <p class="mg-page-sub">Bring a spreadsheet you already keep into the register. Nothing is
-             saved until you have seen exactly what it will do.</p>
+          ${state.step === 0 ? `<p class="mg-page-sub">Bring a spreadsheet you already keep into
+             the register. Nothing is saved until you have seen exactly what it will do.</p>` : ''}
         </div>
       </div>
       ${UI.steps(STEPS, state.step)}
@@ -144,22 +144,22 @@
     return `
       <div class="card">
         <div class="imp-head">
-          <h3 class="card-title">${esc(s.title)} — what the sheet must look like</h3>
-          <a class="btn btn-outline" href="${attr(API.importTemplateUrl(state.kind))}" download>
+          <h3 class="card-title">${esc(s.title)}</h3>
+          <a class="btn btn-primary" href="${attr(API.importTemplateUrl(state.kind))}" download>
             ${icon('sheet', 'ico-sm')} Download the template</a>
         </div>
-        <p class="imp-lede">
-          One row per ${state.kind === 'devotees' ? 'person' : state.kind === 'sevarthi' ? 'seva taken' :
-            state.kind === 'donations' ? 'donation' : 'visit'}.
-          The first row must be the headings below — spelling and capitals do not matter, and the
-          order does not either. Extra columns are ignored, so <strong>a sheet exported from this
-          app can be handed straight back</strong>.
-        </p>
+        <p class="imp-lede">One row per ${state.kind === 'devotees' ? 'person'
+          : state.kind === 'sevarthi' ? 'seva taken'
+          : state.kind === 'donations' ? 'donation' : 'visit'}, with the headings below in the
+          first row.</p>
         <div class="imp-req">
           ${icon('alert', 'ico-sm')}
           <span>Required: ${req.map((c) => `<strong>${esc(c.label)}</strong>`).join(', ')}.
           Everything else may be left blank.</span>
         </div>
+        <p class="imp-fine">Spelling, capitals and column order do not matter, and extra
+          columns are ignored — so a sheet exported from this app can be handed straight
+          back.</p>
 
         <div class="dt-wrap"><table class="custom-table dt imp-cols">
           <thead><tr><th>Heading</th><th>Needed</th><th>What goes in it</th></tr></thead>
